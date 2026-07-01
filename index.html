@@ -72,6 +72,35 @@
     .preview-cta-row { display: flex; gap: 8px; margin-top: 12px; }
     .preview-btn { flex: 1; background: #1a1a26; border: 1px solid #333; color: #888; border-radius: 20px; padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
     .preview-btn:hover { color: var(--gold); border-color: #c9a96e55; }
+    .preview-image-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .preview-image-card {
+      cursor: pointer;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f5f5f5;
+    }
+    .preview-image-card img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+    }
+    .preview-image-caption {
+      font-size: 0.8rem;
+      padding: 4px 6px;
+      opacity: 0.8;
+    }
+    .preview-status {
+      font-size: 0.9rem;
+      margin-top: 8px;
+      opacity: 0.8;
+      color: #555;
+    }
     @media (max-width: 380px) { #app-wrapper { padding: 0 16px; } .actor-card { padding: 14px 16px; } .vibe-card { padding: 14px 16px; } }
   </style>
 </head>
@@ -114,7 +143,7 @@
       { id:'ding-yuxi', name:'丁禹兮', shortName:'禹兮', shortName_en:'Ding Yuxi', title:'禹兮氛围图鉴', title_en:'Ding Yuxi Vibe Atlas', icon:'🎭', accentColor:'#c4a0d0', cardBg:'linear-gradient(135deg,#0e0a14 0%,#180f22 100%)', vibes:[
         { emoji:'🎭', label:'表情包有意识', label_en:'The reaction gif is sentient', subtitle:'他的脸比剧情早三秒入场', subtitle_en:'His face entered the scene three seconds before the plot did', queries:['丁禹兮 表情包 名场面','丁禹兮 表情 搞笑','丁禹兮 名场面 反应'], shareFragment:'禹兮的表情包有自己的意识，每次都比剧情早三秒到场', mjPrompt:'' },
         { emoji:'💘', label:'甜宠刺客', label_en:'Rom-com assassin', subtitle:'他礼貌地笑了一下，整个类型片就塌了', subtitle_en:'He smiled politely and the genre collapsed', queries:['丁禹兮 甜宠 现代剧 可爱','丁禹兮 甜宠 男友感','丁禹兮 现代 可爱 帅'], shareFragment:'甜宠刺客禹兮，礼貌笑了一下，整个类型片当场塌了', mjPrompt:'' },
-        { emoji:'🦊', label:'软话里的刀', label_en:'Softboy with a knife in the dialogue', subtitle:'台词温柔，时机致命', subtitle_en:'Gentle delivery, lethal timing', queries:['丁禹兮 台词 名���面 眼神','丁禹兮 眼神 名场面','丁禹兮 台词 破防'], shareFragment:'台词软软的，时机是刀，禹兮的软话里永远藏着刀', mjPrompt:'' },
+        { emoji:'🦊', label:'软话里的刀', label_en:'Softboy with a knife in the dialogue', subtitle:'台词温柔，时机致命', subtitle_en:'Gentle delivery, lethal timing', queries:['丁禹兮 台词 名场面 眼神','丁禹兮 眼神 名场面','丁禹兮 台词 破防'], shareFragment:'台词软软的，时机是刀，禹兮的软话里永远藏着刀', mjPrompt:'' },
         { emoji:'🌙', label:'古装演技危险分子', label_en:'Costume drama emotional support menace', subtitle:'穿的是古装，走的是现代演技路线', subtitle_en:'Ancient robes, modern levels of acting choices', queries:['丁禹兮 古装 传闻中的陈芊芊 永夜星河','丁禹兮 古装 大片','丁禹兮 传闻中的陈芊芊 帅'], shareFragment:'古装禹兮，穿的是千年前的衣服，演技走的是现代路线', mjPrompt:'' }
       ]},
       { id:'dylan-wang', name:'王鹤棣', shortName:'鹤棣', shortName_en:'Dylan', title:'鹤棣氛围图鉴', title_en:'Dylan Wang Vibe Atlas', icon:'🔥', accentColor:'#c94f4f', cardBg:'linear-gradient(135deg,#1a0808 0%,#0e0404 100%)', vibes:[
@@ -193,14 +222,126 @@
     }
 
     function handleSubtitleClick(){ state.subtitleClicks++; if(state.subtitleClickTimer)clearTimeout(state.subtitleClickTimer); if(state.subtitleClicks>=3){state.showCustom=true;state.subtitleClicks=0;render();setTimeout(function(){var i=document.getElementById('custom-input');if(i)i.focus();},50);}else{state.subtitleClickTimer=setTimeout(function(){state.subtitleClicks=0;},1500);} }
-    function handleRefresh(){ if(state.customQuery){showToast('已切回系统关键词');state.customQuery=null;state.showCustom=false;render();return;} var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; state.queryIdx=(state.queryIdx+1)%vibe.queries.length; if(state.queryIdx===0)showToast('又回到第一批啦'); render(); }
-    function handleCustomInput(val){ state.customQuery=val||null; var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; var qd=document.getElementById('query-display'); var pq=document.getElementById('preview-query'); var q=val||vibe.queries[state.queryIdx]; if(qd)qd.textContent='🔍 '+q+(val?' · 自定义':''); if(pq)pq.textContent=q+(val?' · 自定义':''); var links=document.querySelectorAll('.platform-link'); var urlFns=[weiboUrl,baiduImageUrl,googleUrl,pinterestUrl,tumblrUrl]; links.forEach(function(el,i){if(urlFns[i])el.href=urlFns[i](q);}); var rb=document.getElementById('refresh-btn'); if(rb){if(val){rb.innerHTML='切回系统关键词<div class="en-helper">Return to preset keywords</div>';}else{rb.innerHTML='🔄 换一批<div class="en-helper">Try another batch</div>';}} }
+    
+    let previewRequestId = 0;
+
+    async function fetchPreviewImages(query) {
+      const statusEl = document.getElementById("preview-image-status");
+      const gridEl = document.getElementById("preview-image-grid");
+
+      if (!statusEl || !gridEl) return;
+
+      const requestId = ++previewRequestId;
+
+      statusEl.textContent = "正在召唤氛围图……";
+      gridEl.innerHTML = "";
+
+      try {
+        const resp = await fetch(
+          `/.netlify/functions/preview-search?q=${encodeURIComponent(query)}`
+        );
+
+        if (!resp.ok) throw new Error("Preview request failed");
+
+        const data = await resp.json();
+
+        if (requestId !== previewRequestId) return;
+
+        const results = Array.isArray(data.results) ? data.results : [];
+
+        if (!results.length) {
+          statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
+          return;
+        }
+
+        statusEl.textContent = "";
+        gridEl.innerHTML = "";
+
+        results.forEach((item) => {
+          const card = document.createElement("div");
+          card.className = "preview-image-card";
+
+          const img = document.createElement("img");
+          img.src = item.thumbnail;
+          img.alt = item.title || query;
+          img.loading = "lazy";
+          img.referrerPolicy = "no-referrer";
+
+          img.onerror = () => {
+            if (requestId !== previewRequestId) return;
+            card.remove();
+            if (!gridEl.children.length) {
+              statusEl.textContent = "图片跑丢了，但咒语还在。";
+            }
+          };
+
+          const caption = document.createElement("div");
+          caption.className = "preview-image-caption";
+          caption.textContent = item.source || "点开看原图";
+
+          if (item.link) {
+            card.onclick = () =>
+              window.open(item.link, "_blank", "noopener,noreferrer");
+          }
+
+          card.appendChild(img);
+          card.appendChild(caption);
+          gridEl.appendChild(card);
+        });
+
+        if (!gridEl.children.length) {
+          statusEl.textContent = "图片跑丢了，但咒语还在。";
+        }
+      } catch (e) {
+        if (requestId !== previewRequestId) return;
+        statusEl.textContent = "图片跑丢了，但咒语还在。";
+      }
+    }
+
+    function handleRefresh(){ 
+      if(state.customQuery){
+        showToast('已切回系统关键词');
+        state.customQuery=null;
+        state.showCustom=false;
+        render();
+        return;
+      } 
+      var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; 
+      state.queryIdx=(state.queryIdx+1)%vibe.queries.length; 
+      if(state.queryIdx===0)showToast('又回到第一批啦'); 
+      render();
+      var newQuery = vibe.queries[state.queryIdx];
+      fetchPreviewImages(newQuery);
+    }
+    
+    function handleCustomInput(val){ 
+      state.customQuery=val||null; 
+      var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; 
+      var qd=document.getElementById('query-display'); 
+      var pq=document.getElementById('preview-query'); 
+      var q=val||vibe.queries[state.queryIdx]; 
+      if(qd)qd.textContent='🔍 '+q+(val?' · 自定义':''); 
+      if(pq)pq.textContent=q+(val?' · 自定义':''); 
+      var links=document.querySelectorAll('.platform-link'); 
+      var urlFns=[weiboUrl,baiduImageUrl,googleUrl,pinterestUrl,tumblrUrl]; 
+      links.forEach(function(el,i){if(urlFns[i])el.href=urlFns[i](q);}); 
+      var rb=document.getElementById('refresh-btn'); 
+      if(rb){
+        if(val){
+          rb.innerHTML='切回系统关键词<div class="en-helper">Return to preset keywords</div>';
+        }else{
+          rb.innerHTML='🔄 换一批<div class="en-helper">Try another batch</div>';
+        }
+      }
+      fetchPreviewImages(q);
+    }
+    
     function clearCustom(){ state.customQuery=null; state.showCustom=false; render(); }
     function toggleMJ(){ state.showMJ=!state.showMJ; var c=document.getElementById('mj-content'),a=document.getElementById('mj-arrow'); if(c)c.style.display=state.showMJ?'block':'none'; if(a)a.textContent=state.showMJ?'▲':'▼'; }
     function copyPrompt(){ var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; navigator.clipboard.writeText(vibe.mjPrompt).then(function(){showToast('提示词已复制 ✓');}); }
     function copyShareText(){ var actor=ACTOR_PACKS[state.actorIdx],vibe=actor.vibes[state.vibeIdx]; var text='🖤 姐妹们看这里！！\n\n今天刷的'+actor.name+'氛围太好了，'+vibe.shareFragment+'\n\n'+vibe.emoji+' '+vibe.label+'\n'+vibe.subtitle+'\n\n#'+actor.name+'# #氛围图鉴#'; navigator.clipboard.writeText(text).then(function(){var btn=document.getElementById('share-btn');if(btn){var orig=btn.innerHTML;btn.textContent='✓ 已复制，去安利姐妹吧';setTimeout(function(){btn.innerHTML=orig;},2000);}}); }
 
-    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:#444;letter-spacing:0.05em;">氛围图鉴</span><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英��提示')+'</button></div>'; }
+    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:#444;letter-spacing:0.05em;">氛围图鉴</span><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英文提示')+'</button></div>'; }
 
     function escapeAttr(str){ if(!str)return ''; return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -250,7 +391,10 @@
       h+='<div class="preview-meta"><div class="preview-actor">'+actor.name+'</div><div class="preview-vibe">'+vibe.emoji+' '+vibe.label+'</div></div>';
       h+='<div class="preview-spell"><div class="spell-label">搜索咒语<span class="en-helper-inline"> · Search spell</span></div><div id="preview-query" class="spell-query">'+activeQuery+(state.customQuery?' · 自定义':'')+'</div></div>';
       h+='<div class="preview-cta-row"><button id="preview-open" class="preview-btn">点开看原图<div class="en-helper">Go deeper</div></button><button id="preview-copy" class="preview-btn">复制这句去搜<div class="en-helper">Copy this spell</div></button></div>';
-      h+='</div></section>';
+      h+='</div>';
+      h+='<p id="preview-image-status" class="preview-status"></p>';
+      h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
+      h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:#555;margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
       h+='<a href="'+weiboUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#e6162d;">微博搜图<div class="en-helper">Search Weibo</div></a>';
@@ -282,7 +426,7 @@
       h+='</div>'; return h;
     }
 
-    function render(){ var app=document.getElementById('app'); var html=''; if(state.page==='home')html=renderHome(); else if(state.page==='actor')html=renderActorPage(); else if(state.page==='vibe')html=renderVibePage(); app.innerHTML=html; bindEvents(); }
+    function render(){ var app=document.getElementById('app'); var html=''; if(state.page==='home')html=renderHome(); else if(state.page==='actor')html=renderActorPage(); else if(state.page==='vibe')html=renderVibePage(); app.innerHTML=html; bindEvents(); var vibe; if(state.page==='vibe') { vibe=ACTOR_PACKS[state.actorIdx] && ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; if(vibe) { var activeQuery=state.customQuery||vibe.queries[state.queryIdx]; fetchPreviewImages(activeQuery); } } }
 
     function bindEvents(){
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
