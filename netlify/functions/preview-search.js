@@ -8,6 +8,12 @@ const PLACEHOLDER_THUMBNAIL_PATTERNS = [
   "x320.png"    // Sina brand logo assets: 320X320.png, 20X320.png (case-insensitive match below)
 ];
 
+const PLACEHOLDER_TITLE_PATTERNS = [
+  "sina logo",
+  "site logo",
+  "favicon"
+];
+
 export async function handler(event) {
   const q = (event.queryStringParameters?.q || "").trim();
   const provider = (event.queryStringParameters?.provider || "brave").trim();
@@ -69,7 +75,9 @@ export async function handler(event) {
           typeof r.link === "string" &&
           r.link &&
           !r.isLogo &&
-          !isPlaceholderThumbnail(r.thumbnailOriginal)
+          !isPlaceholderThumbnail(r.thumbnail) &&
+          !isPlaceholderThumbnail(r.thumbnailOriginal) &&
+          !isPlaceholderTitle(r.title)
       )
       .slice(0, 9);
 
@@ -102,6 +110,12 @@ function isPlaceholderThumbnail(originalUrl) {
   if (!originalUrl) return false;
   const lower = originalUrl.toLowerCase();
   return PLACEHOLDER_THUMBNAIL_PATTERNS.some((p) => lower.includes(p));
+}
+
+function isPlaceholderTitle(title) {
+  if (!title) return false;
+  const lower = title.toLowerCase();
+  return PLACEHOLDER_TITLE_PATTERNS.some((p) => lower.includes(p));
 }
 
 function jsonResponse(statusCode, body) {
