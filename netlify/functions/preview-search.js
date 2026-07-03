@@ -81,6 +81,7 @@ export async function handler(event) {
           typeof r.link === "string" &&
           r.link &&
           !r.isLogo &&
+          !isPlaceholderThumbnail(r.thumbnail) &&
           !isPlaceholderThumbnail(r.thumbnailOriginal) &&
           !isPlaceholderTitle(r.title)
       )
