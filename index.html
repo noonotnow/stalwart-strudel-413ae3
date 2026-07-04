@@ -328,18 +328,25 @@
     }
 
     // ---- Daily Star + Vibe preview grid ----
-    // Selection tier: "random among acceptable batches" (v0 — see product framing below).
-    // A batch = one of a vibe's candidate search queries. The preview-search function
-    // already runs a hidden ladder (brave -> serpapi bing/google/yandex fallback) per
-    // query and returns filtered, ad/commerce-free results, so acceptability here is
-    // just "did that hidden ladder produce enough of a grid to feel worth showing."
+    // Selection: ranked selector (v0). A batch = one of a vibe's candidate search
+    // queries. The preview-search function already runs a hidden ladder (brave ->
+    // serpapi bing/google/yandex fallback) per query and returns filtered, ad/commerce-
+    // free results — this selector's job is just choosing which candidate batch wins.
     //
-    // Random is for flavor; ranking is for breakfast. This selector is intentionally
-    // random-among-acceptable for now. To upgrade to ranking later: keep
-    // evaluateCandidates() as-is (it's the source of truth for what's acceptable) and
-    // replace only pickAcceptableBatch()'s selection strategy with a scorer (e.g. source
-    // diversity, freshness, engagement) — no refetching required.
-    const MIN_ACCEPTABLE_RESULTS = 7; // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js: a grid should feel like a grid, not crumbs.
+    // Priority order (highest to lowest):
+    //   1. Subject-correct — hard filter. A batch whose results don't actually mention
+    //      today's star never wins, regardless of count.
+    //   2. Highest final/displayable result count, preferring batches that clear
+    //      PREFERRED_RESULTS (a grid should feel like a grid, not crumbs).
+    //   3. Source/domain diversity — a cheap, mechanical proxy for quality over a wall
+    //      of duplicate-domain results.
+    //   4. Randomness — only breaks a genuine tie among batches that are still tied
+    //      after 1-3 (or within CLOSE_COUNT_RANGE of the max count). Random is for
+    //      flavor; ranking is for breakfast — this is the tie-breaker, not the method.
+    const MIN_VIABLE_RESULTS = 3;   // below this a batch is sparse/junk; only used if nothing better exists.
+    const PREFERRED_RESULTS = 7;    // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js.
+    const CLOSE_COUNT_RANGE = 2;    // counts within this range of the max are treated as tied for randomization.
+    const SUBJECT_MIN_MENTIONS = 2; // mirrors the server-side subject guard in preview-search.js.
 
     function shuffle(arr){
       var a = arr.slice();
@@ -350,35 +357,74 @@
       return a;
     }
 
-    function isAcceptableBatch(results){
-      return Array.isArray(results) && results.length >= MIN_ACCEPTABLE_RESULTS;
+    // The query's first whitespace-separated token is always the star's name (see
+    // ACTOR_PACKS query conventions), matching how the server's own subject guard
+    // derives its token in preview-search.js.
+    function subjectToken(query){
+      return (query.split(/\s+/)[0] || '');
     }
 
-    // Evaluates every candidate query for a vibe (in random order), skipping any in
-    // `exclude`. Returns the full evaluated list (acceptable and not) so the picker can
-    // choose among only the acceptable ones without needing to refetch.
+    // Computed client-side from titles the server already returned — no extra
+    // requests, and it doesn't expose any ladder internals to the UI, just an
+    // accept/reject signal per batch.
+    function countSubjectMentions(results, token){
+      if (!token) return results.length; // no token to check against — don't block
+      return results.filter(function(r){ return (r.title || '').indexOf(token) !== -1; }).length;
+    }
+
+    function countDistinctSources(results){
+      var seen = {};
+      results.forEach(function(r){ if (r.source) seen[r.source] = true; });
+      return Object.keys(seen).length;
+    }
+
+    // Evaluates every untried candidate query for a vibe and scores each one (count,
+    // source diversity, subject-correctness). Returns the full evaluated list — not
+    // just a winner — so pickAcceptableBatch can rank across all of them.
     async function evaluateCandidates(queries, exclude){
       var candidates = [];
-      var pool = shuffle(queries).filter(function(q){ return !exclude || exclude.indexOf(q) === -1; });
+      var pool = queries.filter(function(q){ return !exclude || exclude.indexOf(q) === -1; });
       for (var i = 0; i < pool.length; i++) {
         var q = pool[i];
         try {
           var data = await fetchPreviewData(q);
-          candidates.push({ query: q, results: data.results, acceptable: isAcceptableBatch(data.results) });
+          var results = data.results;
+          var token = subjectToken(q);
+          var subjectHits = countSubjectMentions(results, token);
+          candidates.push({
+            query: q,
+            results: results,
+            count: results.length,
+            distinctSources: countDistinctSources(results),
+            subjectCorrect: results.length > 0 && subjectHits >= Math.min(SUBJECT_MIN_MENTIONS, results.length)
+          });
         } catch (e) {
-          candidates.push({ query: q, results: [], acceptable: false });
+          candidates.push({ query: q, results: [], count: 0, distinctSources: 0, subjectCorrect: false });
         }
-        // Stop early once we already have a couple of acceptable candidates —
-        // no need to burn API calls on every remaining query in the ladder.
-        if (candidates.filter(function(c){ return c.acceptable; }).length >= 2) break;
       }
       return candidates;
     }
 
+    // Ranked selector: subject-correct is a hard filter; highest count wins (preferring
+    // >= PREFERRED_RESULTS when available); source diversity narrows further; and
+    // randomness only breaks a genuine remaining tie.
     function pickAcceptableBatch(candidates){
-      var acceptable = candidates.filter(function(c){ return c.acceptable; });
-      if (!acceptable.length) return null;
-      return acceptable[Math.floor(Math.random() * acceptable.length)];
+      var subjectCorrect = candidates.filter(function(c){ return c.subjectCorrect; });
+      if (!subjectCorrect.length) return null;
+
+      // Prefer batches that clear the "feels like a real grid" bar; only fall back to
+      // thinner (but still subject-correct) batches if nothing clears it.
+      var preferred = subjectCorrect.filter(function(c){ return c.count >= PREFERRED_RESULTS; });
+      var viable = subjectCorrect.filter(function(c){ return c.count >= MIN_VIABLE_RESULTS; });
+      var pool = preferred.length ? preferred : (viable.length ? viable : subjectCorrect);
+
+      var maxCount = Math.max.apply(null, pool.map(function(c){ return c.count; }));
+      var topTier = pool.filter(function(c){ return maxCount - c.count <= CLOSE_COUNT_RANGE; });
+
+      var maxDiversity = Math.max.apply(null, topTier.map(function(c){ return c.distinctSources; }));
+      var topByDiversity = topTier.filter(function(c){ return c.distinctSources === maxDiversity; });
+
+      return shuffle(topByDiversity)[0];
     }
 
     var dailyGridState = { actorIdx: null, vibeIdx: null, chosen: null, triedQueries: [], loading: false, empty: false };
@@ -410,9 +456,10 @@
 
       var chosen = pickAcceptableBatch(candidates);
       if (!chosen) {
-        // Every untried query for this vibe came back sparse/junk. Reset the tried
-        // list (except keep whatever's currently shown, if anything) so a fresh
-        // random pass can retry the full set rather than getting stuck.
+        // Every untried query for this vibe failed the subject-correct hard filter (or
+        // came back sparse/junk). Reset the tried list (except keep whatever's
+        // currently shown, if anything) so a fresh pass can retry the full set rather
+        // than getting stuck.
         dailyGridState.triedQueries = dailyGridState.chosen ? [dailyGridState.chosen.query] : [];
         dailyGridState.loading = false;
         dailyGridState.empty = true;
