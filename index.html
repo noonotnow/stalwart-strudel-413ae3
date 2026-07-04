@@ -225,19 +225,6 @@
     function goHome(){ state.page='home'; state.actorIdx=null; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goActor(idx){ if(idx!==undefined)state.actorIdx=idx; state.page='actor'; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goVibe(vIdx){ state.vibeIdx=vIdx; state.page='vibe'; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; render(); }
-    function goRandom(){
-      var r = getTodaysRandom();
-      if(!r){ showToast('今日推荐暂时迷路了'); return; }
-      state.actorIdx = r.aIdx;
-      state.vibeIdx = r.vIdx;
-      state.queryIdx = 0;
-      state.customQuery = null;
-      state.showCustom = false;
-      state.showMJ = false;
-      state.page = 'vibe';
-      state.fromRandom = true;
-      render();
-    }
 
     function handleSubtitleClick(){ state.subtitleClicks++; if(state.subtitleClickTimer)clearTimeout(state.subtitleClickTimer); if(state.subtitleClicks>=3){state.showCustom=true;state.subtitleClicks=0;render();setTimeout(function(){var i=document.getElementById('custom-input');if(i)i.focus();},50);}else{state.subtitleClickTimer=setTimeout(function(){state.subtitleClicks=0;},1500);} }
     
@@ -531,7 +518,7 @@
 
       h += '<div class="modal-cta-row">';
       h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
-      h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整搜索<div class="en-helper" style="font-weight:400;">Open full search</div></button>';
+      h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
       h += '</div>';
       h += '</div>';
 
@@ -568,7 +555,7 @@
           gridEl.innerHTML = '';
           if (sourcesEl) sourcesEl.innerHTML = '';
         } else if (dailyGridState.empty) {
-          statusEl.textContent = '今天这个氛围有点难找，试试打开完整搜索。';
+          statusEl.textContent = '今天这个氛围有点难找，试试打开完整页面。';
           gridEl.innerHTML = '';
           if (sourcesEl) sourcesEl.innerHTML = '';
         } else if (dailyGridState.chosen) {
@@ -637,8 +624,7 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:#555;font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<button id="btn-random" class="btn-primary" style="margin-bottom:12px;">✨ 今日随机<div class="en-helper" style="font-weight:400;">Today\'s pick</div></button>';
-      h+='<div><button id="btn-daily-grid" class="btn-secondary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Preview today\'s vibe</div></button></div>';
+      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:#666;margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:#444;font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:#2a2a35;font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -719,7 +705,6 @@
     function bindEvents(){
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       if(state.page==='home'){
-        var rb=document.getElementById('btn-random'); if(rb)rb.addEventListener('click',goRandom);
         var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
