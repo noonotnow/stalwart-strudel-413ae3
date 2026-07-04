@@ -102,11 +102,29 @@
       color: #555;
     }
     @media (max-width: 380px) { #app-wrapper { padding: 0 16px; } .actor-card { padding: 14px 16px; } .vibe-card { padding: 14px 16px; } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(6,6,9,0.78); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding: 24px 16px; overflow-y: auto; }
+    .modal-overlay.hidden { display: none; }
+    .modal-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; max-width: 440px; width: 100%; margin: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .modal-title { color: var(--gold); font-size: 15px; font-weight: 700; }
+    .modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 0 0 12px; }
+    .modal-close:hover { color: var(--text-muted); }
+    .modal-star-vibe { font-size: 13px; color: #999; margin-bottom: 2px; }
+    .modal-subtitle { font-size: 13px; color: var(--text-muted); font-style: italic; margin-bottom: 12px; }
+    .modal-spell-row { display: flex; align-items: center; gap: 8px; background: #0e0e12; border: 1px solid #24242e; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+    .modal-spell-text { flex: 1; color: var(--gold); font-family: monospace; font-size: 12px; word-break: break-word; }
+    .modal-spell-copy { background: none; border: 1px solid #333; color: #888; font-size: 11px; padding: 4px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
+    .modal-spell-copy:hover { color: var(--gold); border-color: #c9a96e55; }
+    .modal-sources { font-size: 11px; color: #666; margin-top: 10px; line-height: 1.6; }
+    .modal-sources .source-chip { display: inline-block; background: #1a1a26; border: 1px solid #2a2a35; border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: #888; }
+    .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
   </style>
 </head>
 <body data-id="0">
   <div data-id="1" id="app-wrapper"><div data-id="2" id="app"></div></div>
   <div data-id="3" id="toast"></div>
+  <div id="daily-grid-modal-overlay" class="modal-overlay hidden"></div>
   <script>
     const ACTOR_PACKS = [
       { id:'liu-yuning', name:'刘宇宁', shortName:'宇宁', shortName_en:'Liu Yuning', title:'宇宁氛围图鉴', title_en:'Yuning Vibe Atlas', icon:'🖤', accentColor:'#c9a96e', cardBg:'linear-gradient(135deg,#1a1408 0%,#2a1f0a 100%)', vibes:[
@@ -225,6 +243,69 @@
     
     let previewRequestId = 0;
 
+    // Shared fetch: hits the preview-search netlify function, which already runs the
+    // hidden brave -> serpapi fallback ladder and returns filtered, ad/commerce-free
+    // results. Callers just get back a plain { results, provider } and decide what
+    // to do with it (render inline, or evaluate as a candidate batch for the daily grid).
+    async function fetchPreviewData(query) {
+      const resp = await fetch(
+        `/.netlify/functions/preview-search?q=${encodeURIComponent(query)}`
+      );
+      if (!resp.ok) throw new Error("Preview request failed");
+      const data = await resp.json();
+      return { results: Array.isArray(data.results) ? data.results : [], provider: data.provider };
+    }
+
+    // Renders a result list into a preview-image-grid element, wiring up lazy-load,
+    // broken-image cleanup, and click-through to the source link. Shared by the vibe
+    // page's inline preview and the daily grid modal.
+    function renderImageGrid(gridEl, statusEl, results, query, isStale) {
+      gridEl.innerHTML = "";
+
+      if (!results.length) {
+        statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
+        return;
+      }
+
+      statusEl.textContent = "";
+
+      results.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "preview-image-card";
+
+        const img = document.createElement("img");
+        img.src = item.thumbnail;
+        img.alt = item.title || query;
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+
+        img.onerror = () => {
+          if (isStale && isStale()) return;
+          card.remove();
+          if (!gridEl.children.length) {
+            statusEl.textContent = "图片跑丢了，但咒语还在。";
+          }
+        };
+
+        const caption = document.createElement("div");
+        caption.className = "preview-image-caption";
+        caption.textContent = item.source || "点开看原图";
+
+        if (item.link) {
+          card.onclick = () =>
+            window.open(item.link, "_blank", "noopener,noreferrer");
+        }
+
+        card.appendChild(img);
+        card.appendChild(caption);
+        gridEl.appendChild(card);
+      });
+
+      if (!gridEl.children.length) {
+        statusEl.textContent = "图片跑丢了，但咒语还在。";
+      }
+    }
+
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
       const gridEl = document.getElementById("preview-image-grid");
@@ -237,64 +318,189 @@
       gridEl.innerHTML = "";
 
       try {
-        const resp = await fetch(
-          `/.netlify/functions/preview-search?q=${encodeURIComponent(query)}`
-        );
-
-        if (!resp.ok) throw new Error("Preview request failed");
-
-        const data = await resp.json();
-
+        const { results } = await fetchPreviewData(query);
         if (requestId !== previewRequestId) return;
-
-        const results = Array.isArray(data.results) ? data.results : [];
-
-        if (!results.length) {
-          statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
-          return;
-        }
-
-        statusEl.textContent = "";
-        gridEl.innerHTML = "";
-
-        results.forEach((item) => {
-          const card = document.createElement("div");
-          card.className = "preview-image-card";
-
-          const img = document.createElement("img");
-          img.src = item.thumbnail;
-          img.alt = item.title || query;
-          img.loading = "lazy";
-          img.referrerPolicy = "no-referrer";
-
-          img.onerror = () => {
-            if (requestId !== previewRequestId) return;
-            card.remove();
-            if (!gridEl.children.length) {
-              statusEl.textContent = "图片跑丢了，但咒语还在。";
-            }
-          };
-
-          const caption = document.createElement("div");
-          caption.className = "preview-image-caption";
-          caption.textContent = item.source || "点开看原图";
-
-          if (item.link) {
-            card.onclick = () =>
-              window.open(item.link, "_blank", "noopener,noreferrer");
-          }
-
-          card.appendChild(img);
-          card.appendChild(caption);
-          gridEl.appendChild(card);
-        });
-
-        if (!gridEl.children.length) {
-          statusEl.textContent = "图片跑丢了，但咒语还在。";
-        }
+        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId);
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
+      }
+    }
+
+    // ---- Daily Star + Vibe preview grid ----
+    // Selection tier: "random among acceptable batches" (v0 — see product framing below).
+    // A batch = one of a vibe's candidate search queries. The preview-search function
+    // already runs a hidden ladder (brave -> serpapi bing/google/yandex fallback) per
+    // query and returns filtered, ad/commerce-free results, so acceptability here is
+    // just "did that hidden ladder produce enough of a grid to feel worth showing."
+    //
+    // Random is for flavor; ranking is for breakfast. This selector is intentionally
+    // random-among-acceptable for now. To upgrade to ranking later: keep
+    // evaluateCandidates() as-is (it's the source of truth for what's acceptable) and
+    // replace only pickAcceptableBatch()'s selection strategy with a scorer (e.g. source
+    // diversity, freshness, engagement) — no refetching required.
+    const MIN_ACCEPTABLE_RESULTS = 7; // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js: a grid should feel like a grid, not crumbs.
+
+    function shuffle(arr){
+      var a = arr.slice();
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+      }
+      return a;
+    }
+
+    function isAcceptableBatch(results){
+      return Array.isArray(results) && results.length >= MIN_ACCEPTABLE_RESULTS;
+    }
+
+    // Evaluates every candidate query for a vibe (in random order), skipping any in
+    // `exclude`. Returns the full evaluated list (acceptable and not) so the picker can
+    // choose among only the acceptable ones without needing to refetch.
+    async function evaluateCandidates(queries, exclude){
+      var candidates = [];
+      var pool = shuffle(queries).filter(function(q){ return !exclude || exclude.indexOf(q) === -1; });
+      for (var i = 0; i < pool.length; i++) {
+        var q = pool[i];
+        try {
+          var data = await fetchPreviewData(q);
+          candidates.push({ query: q, results: data.results, acceptable: isAcceptableBatch(data.results) });
+        } catch (e) {
+          candidates.push({ query: q, results: [], acceptable: false });
+        }
+        // Stop early once we already have a couple of acceptable candidates —
+        // no need to burn API calls on every remaining query in the ladder.
+        if (candidates.filter(function(c){ return c.acceptable; }).length >= 2) break;
+      }
+      return candidates;
+    }
+
+    function pickAcceptableBatch(candidates){
+      var acceptable = candidates.filter(function(c){ return c.acceptable; });
+      if (!acceptable.length) return null;
+      return acceptable[Math.floor(Math.random() * acceptable.length)];
+    }
+
+    var dailyGridState = { actorIdx: null, vibeIdx: null, chosen: null, triedQueries: [], loading: false, empty: false };
+    var dailyGridRequestId = 0;
+
+    function closeDailyGridModal(){
+      var overlay = document.getElementById('daily-grid-modal-overlay');
+      if (overlay) { overlay.classList.add('hidden'); overlay.innerHTML = ''; }
+    }
+
+    function openDailyGridModal(){
+      var r = getTodaysRandom();
+      if (!r) { showToast('今日召唤暂时迷路了'); return; }
+      dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, chosen: null, triedQueries: [], loading: true, empty: false };
+      renderDailyGridModal();
+      loadAcceptableBatch();
+    }
+
+    async function loadAcceptableBatch(){
+      var requestId = ++dailyGridRequestId;
+      dailyGridState.loading = true;
+      dailyGridState.empty = false;
+      renderDailyGridModal();
+
+      var actor = ACTOR_PACKS[dailyGridState.actorIdx];
+      var vibe = actor.vibes[dailyGridState.vibeIdx];
+      var candidates = await evaluateCandidates(vibe.queries, dailyGridState.triedQueries);
+      if (requestId !== dailyGridRequestId) return;
+
+      var chosen = pickAcceptableBatch(candidates);
+      if (!chosen) {
+        // Every untried query for this vibe came back sparse/junk. Reset the tried
+        // list (except keep whatever's currently shown, if anything) so a fresh
+        // random pass can retry the full set rather than getting stuck.
+        dailyGridState.triedQueries = dailyGridState.chosen ? [dailyGridState.chosen.query] : [];
+        dailyGridState.loading = false;
+        dailyGridState.empty = true;
+        renderDailyGridModal();
+        return;
+      }
+
+      dailyGridState.triedQueries.push(chosen.query);
+      dailyGridState.chosen = chosen;
+      dailyGridState.loading = false;
+      dailyGridState.empty = false;
+      renderDailyGridModal();
+    }
+
+    function renderDailyGridModal(){
+      var overlay = document.getElementById('daily-grid-modal-overlay');
+      if (!overlay) return;
+
+      if (dailyGridState.actorIdx === null) { overlay.classList.add('hidden'); overlay.innerHTML = ''; return; }
+
+      var actor = ACTOR_PACKS[dailyGridState.actorIdx];
+      var vibe = actor.vibes[dailyGridState.vibeIdx];
+
+      var h = '<div class="modal-card">';
+      h += '<div class="modal-header"><div class="modal-title">🔮 今日之星 · 氛围格子<div class="en-helper" style="font-weight:400;">Today\'s Star + Vibe preview</div></div><button id="daily-grid-close" class="modal-close">✕</button></div>';
+      h += '<div class="modal-star-vibe">今日之星：<strong style="color:'+actor.accentColor+';">'+actor.name+'</strong><span class="en-helper-inline"> · Star: '+actor.shortName_en+'</span></div>';
+      h += '<div class="modal-star-vibe">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Vibe: '+vibe.label_en+'</span></div>';
+      h += '<div class="modal-subtitle">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
+
+      var activeQuery = dailyGridState.chosen ? dailyGridState.chosen.query : (dailyGridState.loading ? '正在挑选可用咒语……' : '');
+      h += '<div class="modal-spell-row"><div class="modal-spell-text">🔍 '+activeQuery+'</div><button id="daily-grid-copy-spell" class="modal-spell-copy">复制咒语<span class="en-helper-inline"> · Copy</span></button></div>';
+
+      h += '<p id="daily-grid-status" class="preview-status"></p>';
+      h += '<div id="daily-grid-image-grid" class="preview-image-grid"></div>';
+      h += '<div id="daily-grid-sources" class="modal-sources"></div>';
+
+      h += '<div class="modal-cta-row">';
+      h += '<button id="daily-grid-another" class="btn-secondary">🔄 换一批可用的<div class="en-helper" style="font-weight:400;">Another acceptable batch</div></button>';
+      h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整搜索<div class="en-helper" style="font-weight:400;">Open full search</div></button>';
+      h += '</div>';
+      h += '</div>';
+
+      overlay.innerHTML = h;
+      overlay.classList.remove('hidden');
+
+      var closeBtn = document.getElementById('daily-grid-close'); if (closeBtn) closeBtn.addEventListener('click', closeDailyGridModal);
+      overlay.onclick = function(e){ if (e.target === overlay) closeDailyGridModal(); };
+      var anotherBtn = document.getElementById('daily-grid-another'); if (anotherBtn) anotherBtn.addEventListener('click', loadAcceptableBatch);
+      var openFullBtn = document.getElementById('daily-grid-open-full'); if (openFullBtn) openFullBtn.addEventListener('click', function(){
+        closeDailyGridModal();
+        state.actorIdx = dailyGridState.actorIdx;
+        state.vibeIdx = dailyGridState.vibeIdx;
+        state.queryIdx = 0;
+        state.customQuery = dailyGridState.chosen ? dailyGridState.chosen.query : null;
+        state.showCustom = false;
+        state.showMJ = false;
+        state.page = 'vibe';
+        state.fromRandom = true;
+        render();
+      });
+      var copySpellBtn = document.getElementById('daily-grid-copy-spell'); if (copySpellBtn) copySpellBtn.addEventListener('click', function(){
+        if (!dailyGridState.chosen) return;
+        var q = dailyGridState.chosen.query;
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
+      });
+
+      var statusEl = document.getElementById('daily-grid-status');
+      var gridEl = document.getElementById('daily-grid-image-grid');
+      var sourcesEl = document.getElementById('daily-grid-sources');
+      if (statusEl && gridEl) {
+        if (dailyGridState.loading) {
+          statusEl.textContent = '正在挑一批不寒酸的图……';
+          gridEl.innerHTML = '';
+          if (sourcesEl) sourcesEl.innerHTML = '';
+        } else if (dailyGridState.empty) {
+          statusEl.textContent = '今天这个氛围有点难找，试试换一批或打开完整搜索。';
+          gridEl.innerHTML = '';
+          if (sourcesEl) sourcesEl.innerHTML = '';
+        } else if (dailyGridState.chosen) {
+          renderImageGrid(gridEl, statusEl, dailyGridState.chosen.results, dailyGridState.chosen.query);
+          if (sourcesEl) {
+            var sources = [];
+            dailyGridState.chosen.results.forEach(function(r){ if (r.source && sources.indexOf(r.source) === -1) sources.push(r.source); });
+            sourcesEl.innerHTML = sources.length
+              ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map(function(s){ return '<span class="source-chip">'+s+'</span>'; }).join('')
+              : '';
+          }
+        }
       }
     }
 
@@ -350,7 +556,8 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:#555;font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<button id="btn-random" class="btn-primary" style="margin-bottom:28px;">✨ 今日随机<div class="en-helper" style="font-weight:400;">Today\'s pick</div></button>';
+      h+='<button id="btn-random" class="btn-primary" style="margin-bottom:12px;">✨ 今日随机<div class="en-helper" style="font-weight:400;">Today\'s pick</div></button>';
+      h+='<div><button id="btn-daily-grid" class="btn-secondary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Preview today\'s vibe</div></button></div>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:#666;margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:#444;font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:#2a2a35;font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -432,6 +639,7 @@
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       if(state.page==='home'){
         var rb=document.getElementById('btn-random'); if(rb)rb.addEventListener('click',goRandom);
+        var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
       if(state.page==='actor'){
