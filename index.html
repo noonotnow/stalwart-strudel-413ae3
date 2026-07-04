@@ -330,23 +330,56 @@
     // ---- Daily Star + Vibe preview grid ----
     // Selection: ranked selector (v0). A batch = one of a vibe's candidate search
     // queries. The preview-search function already runs a hidden ladder (brave ->
-    // serpapi bing/google/yandex fallback) per query and returns filtered, ad/commerce-
-    // free results — this selector's job is just choosing which candidate batch wins.
+    // serpapi bing/google/yandex fallback) per query. That ladder's own subject guard
+    // (see preview-search.js) already gates the SerpAPI path — a batch only comes back
+    // as `provider !== 'brave'` if the server already confirmed the results mention the
+    // subject — and the brave path is a literal web search on the star's name, so it's
+    // inherently on-topic. So this selector does NOT re-run a naive per-item title match
+    // client-side: an earlier version tried that and it backfired badly — items from
+    // apps like TikTok/Douyin/Threads often have no real caption, so the server's own
+    // title-fallback (falls back to the raw query string) made *every* item trivially
+    // "mention" the subject, while a handful of genuinely good, caption-less batches got
+    // wrongly rejected. Net effect: junk batches with fallback titles won by default.
+    //
+    // What actually needs filtering is specific junk categories that already-relevant
+    // results occasionally include — finance/stock chart tiles, app-store/product tiles,
+    // portal logo tiles — none of which are actor content even though they cleared the
+    // server's ad/commerce/placeholder filters. We filter those out per-item client-side
+    // (JUNK_DOMAIN_PATTERNS) before counting, so a batch's rank reflects only the results
+    // that actually belong in a fan-preview grid.
     //
     // Priority order (highest to lowest):
-    //   1. Subject-correct — hard filter. A batch whose results don't actually mention
-    //      today's star never wins, regardless of count.
-    //   2. Highest final/displayable result count, preferring batches that clear
-    //      PREFERRED_RESULTS (a grid should feel like a grid, not crumbs).
-    //   3. Source/domain diversity — a cheap, mechanical proxy for quality over a wall
-    //      of duplicate-domain results.
-    //   4. Randomness — only breaks a genuine tie among batches that are still tied
-    //      after 1-3 (or within CLOSE_COUNT_RANGE of the max count). Random is for
-    //      flavor; ranking is for breakfast — this is the tie-breaker, not the method.
-    const MIN_VIABLE_RESULTS = 3;   // below this a batch is sparse/junk; only used if nothing better exists.
-    const PREFERRED_RESULTS = 7;    // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js.
+    //   1. Sparse/junk-dominated batches are dropped — a batch needs at least
+    //      MIN_VIABLE_RESULTS *clean* (non-junk-domain) results to be considered at all.
+    //   2. Highest clean-result count wins (naturally favors batches that clear
+    //      PREFERRED_RESULTS — a grid should feel like a grid, not crumbs).
+    //   3. Source/domain diversity narrows further within a close-count top tier (a
+    //      cheap, mechanical proxy for quality over a wall of duplicate-domain results).
+    //   4. Randomness only breaks a genuine remaining tie. Random is for flavor; ranking
+    //      is for breakfast — this is the tie-breaker, not the method.
+    const MIN_VIABLE_RESULTS = 3;   // below this (after junk filtering) a batch is sparse/crumbs, not a grid.
+    const PREFERRED_RESULTS = 7;    // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js — informal target, not a hard cutoff.
     const CLOSE_COUNT_RANGE = 2;    // counts within this range of the max are treated as tied for randomization.
-    const SUBJECT_MIN_MENTIONS = 2; // mirrors the server-side subject guard in preview-search.js.
+    const RANKED_BATCH_LIMIT = 3;   // expose only the top N ranked batches — the rest of the ladder stays hidden candidate depth.
+
+    // Domains that regularly slip past the server's ad/commerce/placeholder filters
+    // (they're not ads, not logos-by-filename, not known commerce sites) but are
+    // reliably NOT actor/drama content: finance/stock chart aggregators, app-store /
+    // streaming-product tiles, and portal home-page/logo tiles.
+    const JUNK_DOMAIN_PATTERNS = [
+      "apple.com",            // music.apple.com / apps.apple.com "representative work" product tiles
+      "163.com",               // NetEase portal logo tile
+      "finance.sina.com.cn",   // stock chart tiles
+      "cj.sina.com.cn",        // Sina's finance ("财经") subdomain — same problem, different subdomain
+      "eastmoney.com",
+      "xueqiu.com",
+      "10jqka.com.cn",
+      "stockstar.com",
+      "investing.com",
+      "tradingview.com",
+      "wallstreetcn.com",
+      "cls.cn"
+    ];
 
     function shuffle(arr){
       var a = arr.slice();
@@ -357,19 +390,10 @@
       return a;
     }
 
-    // The query's first whitespace-separated token is always the star's name (see
-    // ACTOR_PACKS query conventions), matching how the server's own subject guard
-    // derives its token in preview-search.js.
-    function subjectToken(query){
-      return (query.split(/\s+/)[0] || '');
-    }
-
-    // Computed client-side from titles the server already returned — no extra
-    // requests, and it doesn't expose any ladder internals to the UI, just an
-    // accept/reject signal per batch.
-    function countSubjectMentions(results, token){
-      if (!token) return results.length; // no token to check against — don't block
-      return results.filter(function(r){ return (r.title || '').indexOf(token) !== -1; }).length;
+    function isJunkSource(source){
+      if (!source) return false;
+      var lower = source.toLowerCase();
+      return JUNK_DOMAIN_PATTERNS.some(function(p){ return lower === p || lower.endsWith("." + p); });
     }
 
     function countDistinctSources(results){
@@ -378,56 +402,52 @@
       return Object.keys(seen).length;
     }
 
-    // Evaluates every untried candidate query for a vibe and scores each one (count,
-    // source diversity, subject-correctness). Returns the full evaluated list — not
-    // just a winner — so pickAcceptableBatch can rank across all of them.
-    async function evaluateCandidates(queries, exclude){
+    // Evaluates every candidate query for a vibe and scores each one. Strips known-junk
+    // sources before counting, so ranking reflects only grid-worthy results. Returns the
+    // full evaluated list (not just a winner) so rankCandidates can compare across all
+    // of them and pick the top RANKED_BATCH_LIMIT.
+    async function evaluateCandidates(queries){
       var candidates = [];
-      var pool = queries.filter(function(q){ return !exclude || exclude.indexOf(q) === -1; });
-      for (var i = 0; i < pool.length; i++) {
-        var q = pool[i];
+      for (var i = 0; i < queries.length; i++) {
+        var q = queries[i];
         try {
           var data = await fetchPreviewData(q);
-          var results = data.results;
-          var token = subjectToken(q);
-          var subjectHits = countSubjectMentions(results, token);
+          var cleanResults = data.results.filter(function(r){ return !isJunkSource(r.source); });
           candidates.push({
             query: q,
-            results: results,
-            count: results.length,
-            distinctSources: countDistinctSources(results),
-            subjectCorrect: results.length > 0 && subjectHits >= Math.min(SUBJECT_MIN_MENTIONS, results.length)
+            results: cleanResults,
+            count: cleanResults.length,
+            distinctSources: countDistinctSources(cleanResults),
+            provider: data.provider
           });
         } catch (e) {
-          candidates.push({ query: q, results: [], count: 0, distinctSources: 0, subjectCorrect: false });
+          candidates.push({ query: q, results: [], count: 0, distinctSources: 0, provider: null });
         }
       }
       return candidates;
     }
 
-    // Ranked selector: subject-correct is a hard filter; highest count wins (preferring
-    // >= PREFERRED_RESULTS when available); source diversity narrows further; and
-    // randomness only breaks a genuine remaining tie.
-    function pickAcceptableBatch(candidates){
-      var subjectCorrect = candidates.filter(function(c){ return c.subjectCorrect; });
-      if (!subjectCorrect.length) return null;
-
-      // Prefer batches that clear the "feels like a real grid" bar; only fall back to
-      // thinner (but still subject-correct) batches if nothing clears it.
-      var preferred = subjectCorrect.filter(function(c){ return c.count >= PREFERRED_RESULTS; });
-      var viable = subjectCorrect.filter(function(c){ return c.count >= MIN_VIABLE_RESULTS; });
-      var pool = preferred.length ? preferred : (viable.length ? viable : subjectCorrect);
-
-      var maxCount = Math.max.apply(null, pool.map(function(c){ return c.count; }));
-      var topTier = pool.filter(function(c){ return maxCount - c.count <= CLOSE_COUNT_RANGE; });
-
-      var maxDiversity = Math.max.apply(null, topTier.map(function(c){ return c.distinctSources; }));
-      var topByDiversity = topTier.filter(function(c){ return c.distinctSources === maxDiversity; });
-
-      return shuffle(topByDiversity)[0];
+    // Ranked selector: drop sparse/junk-dominated batches, sort the rest by clean-result
+    // count (highest first), then source diversity, then a random jitter that only ever
+    // breaks a genuine remaining tie (same count, same diversity). Returns the ranked
+    // list so callers can take the top few instead of just one winner.
+    function rankCandidates(candidates){
+      var acceptable = candidates.filter(function(c){ return c.count >= MIN_VIABLE_RESULTS; });
+      var withJitter = acceptable.map(function(c){
+        var copy = {};
+        for (var k in c) copy[k] = c[k];
+        copy._jitter = Math.random();
+        return copy;
+      });
+      withJitter.sort(function(a, b){
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.distinctSources !== a.distinctSources) return b.distinctSources - a.distinctSources;
+        return b._jitter - a._jitter;
+      });
+      return withJitter;
     }
 
-    var dailyGridState = { actorIdx: null, vibeIdx: null, chosen: null, triedQueries: [], loading: false, empty: false };
+    var dailyGridState = { actorIdx: null, vibeIdx: null, rankedBatches: [], rankIndex: 0, chosen: null, loading: false, empty: false };
     var dailyGridRequestId = 0;
 
     function closeDailyGridModal(){
@@ -438,12 +458,16 @@
     function openDailyGridModal(){
       var r = getTodaysRandom();
       if (!r) { showToast('今日召唤暂时迷路了'); return; }
-      dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, chosen: null, triedQueries: [], loading: true, empty: false };
+      dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, rankedBatches: [], rankIndex: 0, chosen: null, loading: true, empty: false };
       renderDailyGridModal();
-      loadAcceptableBatch();
+      computeRankedBatches();
     }
 
-    async function loadAcceptableBatch(){
+    // Evaluates every candidate query for today's vibe once, ranks them, and keeps only
+    // the top RANKED_BATCH_LIMIT. The modal shows rank #1 by default; "next ranked
+    // batch" just cycles through this precomputed list — no extra fetches, no
+    // re-ranking, no randomness beyond the ordering already decided here.
+    async function computeRankedBatches(){
       var requestId = ++dailyGridRequestId;
       dailyGridState.loading = true;
       dailyGridState.empty = false;
@@ -451,26 +475,27 @@
 
       var actor = ACTOR_PACKS[dailyGridState.actorIdx];
       var vibe = actor.vibes[dailyGridState.vibeIdx];
-      var candidates = await evaluateCandidates(vibe.queries, dailyGridState.triedQueries);
+      var candidates = await evaluateCandidates(vibe.queries);
       if (requestId !== dailyGridRequestId) return;
 
-      var chosen = pickAcceptableBatch(candidates);
-      if (!chosen) {
-        // Every untried query for this vibe failed the subject-correct hard filter (or
-        // came back sparse/junk). Reset the tried list (except keep whatever's
-        // currently shown, if anything) so a fresh pass can retry the full set rather
-        // than getting stuck.
-        dailyGridState.triedQueries = dailyGridState.chosen ? [dailyGridState.chosen.query] : [];
-        dailyGridState.loading = false;
-        dailyGridState.empty = true;
-        renderDailyGridModal();
-        return;
-      }
-
-      dailyGridState.triedQueries.push(chosen.query);
-      dailyGridState.chosen = chosen;
+      var ranked = rankCandidates(candidates).slice(0, RANKED_BATCH_LIMIT);
+      dailyGridState.rankedBatches = ranked;
+      dailyGridState.rankIndex = 0;
+      dailyGridState.chosen = ranked[0] || null;
       dailyGridState.loading = false;
-      dailyGridState.empty = false;
+      dailyGridState.empty = !ranked.length;
+      renderDailyGridModal();
+    }
+
+    // "Next ranked batch": cycles through the precomputed top-N list (rank 1 -> 2 -> 3
+    // -> back to 1), not a random pick and not a re-fetch.
+    function showNextRankedBatch(){
+      var batches = dailyGridState.rankedBatches;
+      if (!batches.length) return;
+      if (batches.length === 1) { showToast('今天这个氛围只有一批扛得住'); return; }
+      dailyGridState.rankIndex = (dailyGridState.rankIndex + 1) % batches.length;
+      if (dailyGridState.rankIndex === 0) { showToast('这是今天最靠谱的组合啦，回到第一批'); }
+      dailyGridState.chosen = batches[dailyGridState.rankIndex];
       renderDailyGridModal();
     }
 
@@ -492,12 +517,20 @@
       var activeQuery = dailyGridState.chosen ? dailyGridState.chosen.query : (dailyGridState.loading ? '正在挑选可用咒语……' : '');
       h += '<div class="modal-spell-row"><div class="modal-spell-text">🔍 '+activeQuery+'</div><button id="daily-grid-copy-spell" class="modal-spell-copy">复制咒语<span class="en-helper-inline"> · Copy</span></button></div>';
 
+      // Lightweight trace line: rank position, clean result count, source diversity,
+      // provider — enough to sanity-check "why this batch won" without exposing the
+      // full hidden ladder (raw per-engine attempts, subject-guard internals, etc).
+      if (dailyGridState.chosen) {
+        var c = dailyGridState.chosen;
+        h += '<div style="font-size:10.5px;color:#555;margin:-6px 0 12px;">第 '+(dailyGridState.rankIndex+1)+' / '+dailyGridState.rankedBatches.length+' 名 · '+c.count+' 张图 · '+c.distinctSources+' 个来源'+(c.provider ? ' · '+c.provider : '')+'<span class="en-helper-inline"> · Rank '+(dailyGridState.rankIndex+1)+' of '+dailyGridState.rankedBatches.length+', '+c.count+' results, '+c.distinctSources+' sources'+(c.provider ? ', '+c.provider : '')+'</span></div>';
+      }
+
       h += '<p id="daily-grid-status" class="preview-status"></p>';
       h += '<div id="daily-grid-image-grid" class="preview-image-grid"></div>';
       h += '<div id="daily-grid-sources" class="modal-sources"></div>';
 
       h += '<div class="modal-cta-row">';
-      h += '<button id="daily-grid-another" class="btn-secondary">🔄 换一批可用的<div class="en-helper" style="font-weight:400;">Another acceptable batch</div></button>';
+      h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
       h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整搜索<div class="en-helper" style="font-weight:400;">Open full search</div></button>';
       h += '</div>';
       h += '</div>';
@@ -507,7 +540,7 @@
 
       var closeBtn = document.getElementById('daily-grid-close'); if (closeBtn) closeBtn.addEventListener('click', closeDailyGridModal);
       overlay.onclick = function(e){ if (e.target === overlay) closeDailyGridModal(); };
-      var anotherBtn = document.getElementById('daily-grid-another'); if (anotherBtn) anotherBtn.addEventListener('click', loadAcceptableBatch);
+      var anotherBtn = document.getElementById('daily-grid-another'); if (anotherBtn) anotherBtn.addEventListener('click', showNextRankedBatch);
       var openFullBtn = document.getElementById('daily-grid-open-full'); if (openFullBtn) openFullBtn.addEventListener('click', function(){
         closeDailyGridModal();
         state.actorIdx = dailyGridState.actorIdx;
@@ -535,7 +568,7 @@
           gridEl.innerHTML = '';
           if (sourcesEl) sourcesEl.innerHTML = '';
         } else if (dailyGridState.empty) {
-          statusEl.textContent = '今天这个氛围有点难找，试试换一批或打开完整搜索。';
+          statusEl.textContent = '今天这个氛围有点难找，试试打开完整搜索。';
           gridEl.innerHTML = '';
           if (sourcesEl) sourcesEl.innerHTML = '';
         } else if (dailyGridState.chosen) {
@@ -550,6 +583,7 @@
         }
       }
     }
+
 
     function handleRefresh(){ 
       if(state.customQuery){
