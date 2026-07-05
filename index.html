@@ -102,11 +102,29 @@
       color: #555;
     }
     @media (max-width: 380px) { #app-wrapper { padding: 0 16px; } .actor-card { padding: 14px 16px; } .vibe-card { padding: 14px 16px; } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(6,6,9,0.78); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding: 24px 16px; overflow-y: auto; }
+    .modal-overlay.hidden { display: none; }
+    .modal-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; max-width: 440px; width: 100%; margin: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .modal-title { color: var(--gold); font-size: 15px; font-weight: 700; }
+    .modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 0 0 12px; }
+    .modal-close:hover { color: var(--text-muted); }
+    .modal-star-vibe { font-size: 13px; color: #999; margin-bottom: 2px; }
+    .modal-subtitle { font-size: 13px; color: var(--text-muted); font-style: italic; margin-bottom: 12px; }
+    .modal-spell-row { display: flex; align-items: center; gap: 8px; background: #0e0e12; border: 1px solid #24242e; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+    .modal-spell-text { flex: 1; color: var(--gold); font-family: monospace; font-size: 12px; word-break: break-word; }
+    .modal-spell-copy { background: none; border: 1px solid #333; color: #888; font-size: 11px; padding: 4px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
+    .modal-spell-copy:hover { color: var(--gold); border-color: #c9a96e55; }
+    .modal-sources { font-size: 11px; color: #666; margin-top: 10px; line-height: 1.6; }
+    .modal-sources .source-chip { display: inline-block; background: #1a1a26; border: 1px solid #2a2a35; border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: #888; }
+    .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
   </style>
 </head>
 <body data-id="0">
   <div data-id="1" id="app-wrapper"><div data-id="2" id="app"></div></div>
   <div data-id="3" id="toast"></div>
+  <div id="daily-grid-modal-overlay" class="modal-overlay hidden"></div>
   <script>
     const ACTOR_PACKS = [
       { id:'liu-yuning', name:'刘宇宁', shortName:'宇宁', shortName_en:'Liu Yuning', title:'宇宁氛围图鉴', title_en:'Yuning Vibe Atlas', icon:'🖤', accentColor:'#c9a96e', cardBg:'linear-gradient(135deg,#1a1408 0%,#2a1f0a 100%)', vibes:[
@@ -207,23 +225,73 @@
     function goHome(){ state.page='home'; state.actorIdx=null; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goActor(idx){ if(idx!==undefined)state.actorIdx=idx; state.page='actor'; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goVibe(vIdx){ state.vibeIdx=vIdx; state.page='vibe'; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; render(); }
-    function goRandom(){
-      var r = getTodaysRandom();
-      if(!r){ showToast('今日推荐暂时迷路了'); return; }
-      state.actorIdx = r.aIdx;
-      state.vibeIdx = r.vIdx;
-      state.queryIdx = 0;
-      state.customQuery = null;
-      state.showCustom = false;
-      state.showMJ = false;
-      state.page = 'vibe';
-      state.fromRandom = true;
-      render();
-    }
 
     function handleSubtitleClick(){ state.subtitleClicks++; if(state.subtitleClickTimer)clearTimeout(state.subtitleClickTimer); if(state.subtitleClicks>=3){state.showCustom=true;state.subtitleClicks=0;render();setTimeout(function(){var i=document.getElementById('custom-input');if(i)i.focus();},50);}else{state.subtitleClickTimer=setTimeout(function(){state.subtitleClicks=0;},1500);} }
     
     let previewRequestId = 0;
+
+    // Shared fetch: hits the preview-search netlify function, which already runs the
+    // hidden brave -> serpapi fallback ladder and returns filtered, ad/commerce-free
+    // results. Callers just get back a plain { results, provider } and decide what
+    // to do with it (render inline, or evaluate as a candidate batch for the daily grid).
+    async function fetchPreviewData(query) {
+      const resp = await fetch(
+        `/.netlify/functions/preview-search?q=${encodeURIComponent(query)}`
+      );
+      if (!resp.ok) throw new Error("Preview request failed");
+      const data = await resp.json();
+      return { results: Array.isArray(data.results) ? data.results : [], provider: data.provider };
+    }
+
+    // Renders a result list into a preview-image-grid element, wiring up lazy-load,
+    // broken-image cleanup, and click-through to the source link. Shared by the vibe
+    // page's inline preview and the daily grid modal.
+    function renderImageGrid(gridEl, statusEl, results, query, isStale) {
+      gridEl.innerHTML = "";
+
+      if (!results.length) {
+        statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
+        return;
+      }
+
+      statusEl.textContent = "";
+
+      results.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "preview-image-card";
+
+        const img = document.createElement("img");
+        img.src = item.thumbnail;
+        img.alt = item.title || query;
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+
+        img.onerror = () => {
+          if (isStale && isStale()) return;
+          card.remove();
+          if (!gridEl.children.length) {
+            statusEl.textContent = "图片跑丢了，但咒语还在。";
+          }
+        };
+
+        const caption = document.createElement("div");
+        caption.className = "preview-image-caption";
+        caption.textContent = item.source || "点开看原图";
+
+        if (item.link) {
+          card.onclick = () =>
+            window.open(item.link, "_blank", "noopener,noreferrer");
+        }
+
+        card.appendChild(img);
+        card.appendChild(caption);
+        gridEl.appendChild(card);
+      });
+
+      if (!gridEl.children.length) {
+        statusEl.textContent = "图片跑丢了，但咒语还在。";
+      }
+    }
 
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
@@ -237,66 +305,272 @@
       gridEl.innerHTML = "";
 
       try {
-        const resp = await fetch(
-          `/.netlify/functions/preview-search?q=${encodeURIComponent(query)}`
-        );
-
-        if (!resp.ok) throw new Error("Preview request failed");
-
-        const data = await resp.json();
-
+        const { results } = await fetchPreviewData(query);
         if (requestId !== previewRequestId) return;
-
-        const results = Array.isArray(data.results) ? data.results : [];
-
-        if (!results.length) {
-          statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
-          return;
-        }
-
-        statusEl.textContent = "";
-        gridEl.innerHTML = "";
-
-        results.forEach((item) => {
-          const card = document.createElement("div");
-          card.className = "preview-image-card";
-
-          const img = document.createElement("img");
-          img.src = item.thumbnail;
-          img.alt = item.title || query;
-          img.loading = "lazy";
-          img.referrerPolicy = "no-referrer";
-
-          img.onerror = () => {
-            if (requestId !== previewRequestId) return;
-            card.remove();
-            if (!gridEl.children.length) {
-              statusEl.textContent = "图片跑丢了，但咒语还在。";
-            }
-          };
-
-          const caption = document.createElement("div");
-          caption.className = "preview-image-caption";
-          caption.textContent = item.source || "点开看原图";
-
-          if (item.link) {
-            card.onclick = () =>
-              window.open(item.link, "_blank", "noopener,noreferrer");
-          }
-
-          card.appendChild(img);
-          card.appendChild(caption);
-          gridEl.appendChild(card);
-        });
-
-        if (!gridEl.children.length) {
-          statusEl.textContent = "图片跑丢了，但咒语还在。";
-        }
+        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId);
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
       }
     }
+
+    // ---- Daily Star + Vibe preview grid ----
+    // Selection: ranked selector (v0). A batch = one of a vibe's candidate search
+    // queries. The preview-search function already runs a hidden ladder (brave ->
+    // serpapi bing/google/yandex fallback) per query. That ladder's own subject guard
+    // (see preview-search.js) already gates the SerpAPI path — a batch only comes back
+    // as `provider !== 'brave'` if the server already confirmed the results mention the
+    // subject — and the brave path is a literal web search on the star's name, so it's
+    // inherently on-topic. So this selector does NOT re-run a naive per-item title match
+    // client-side: an earlier version tried that and it backfired badly — items from
+    // apps like TikTok/Douyin/Threads often have no real caption, so the server's own
+    // title-fallback (falls back to the raw query string) made *every* item trivially
+    // "mention" the subject, while a handful of genuinely good, caption-less batches got
+    // wrongly rejected. Net effect: junk batches with fallback titles won by default.
+    //
+    // What actually needs filtering is specific junk categories that already-relevant
+    // results occasionally include — finance/stock chart tiles, app-store/product tiles,
+    // portal logo tiles — none of which are actor content even though they cleared the
+    // server's ad/commerce/placeholder filters. We filter those out per-item client-side
+    // (JUNK_DOMAIN_PATTERNS) before counting, so a batch's rank reflects only the results
+    // that actually belong in a fan-preview grid.
+    //
+    // Priority order (highest to lowest):
+    //   1. Sparse/junk-dominated batches are dropped — a batch needs at least
+    //      MIN_VIABLE_RESULTS *clean* (non-junk-domain) results to be considered at all.
+    //   2. Highest clean-result count wins (naturally favors batches that clear
+    //      PREFERRED_RESULTS — a grid should feel like a grid, not crumbs).
+    //   3. Source/domain diversity narrows further within a close-count top tier (a
+    //      cheap, mechanical proxy for quality over a wall of duplicate-domain results).
+    //   4. Randomness only breaks a genuine remaining tie. Random is for flavor; ranking
+    //      is for breakfast — this is the tie-breaker, not the method.
+    const MIN_VIABLE_RESULTS = 3;   // below this (after junk filtering) a batch is sparse/crumbs, not a grid.
+    const PREFERRED_RESULTS = 7;    // mirrors USEFUL_FALLBACK_THRESHOLD in preview-search.js — informal target, not a hard cutoff.
+    const CLOSE_COUNT_RANGE = 2;    // counts within this range of the max are treated as tied for randomization.
+    const RANKED_BATCH_LIMIT = 3;   // expose only the top N ranked batches — the rest of the ladder stays hidden candidate depth.
+
+    // Domains that regularly slip past the server's ad/commerce/placeholder filters
+    // (they're not ads, not logos-by-filename, not known commerce sites) but are
+    // reliably NOT actor/drama content: finance/stock chart aggregators, app-store /
+    // streaming-product tiles, and portal home-page/logo tiles.
+    const JUNK_DOMAIN_PATTERNS = [
+      "apple.com",            // music.apple.com / apps.apple.com "representative work" product tiles
+      "163.com",               // NetEase portal logo tile
+      "finance.sina.com.cn",   // stock chart tiles
+      "cj.sina.com.cn",        // Sina's finance ("财经") subdomain — same problem, different subdomain
+      "eastmoney.com",
+      "xueqiu.com",
+      "10jqka.com.cn",
+      "stockstar.com",
+      "investing.com",
+      "tradingview.com",
+      "wallstreetcn.com",
+      "cls.cn"
+    ];
+
+    function shuffle(arr){
+      var a = arr.slice();
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+      }
+      return a;
+    }
+
+    function isJunkSource(source){
+      if (!source) return false;
+      var lower = source.toLowerCase();
+      return JUNK_DOMAIN_PATTERNS.some(function(p){ return lower === p || lower.endsWith("." + p); });
+    }
+
+    function countDistinctSources(results){
+      var seen = {};
+      results.forEach(function(r){ if (r.source) seen[r.source] = true; });
+      return Object.keys(seen).length;
+    }
+
+    // Evaluates every candidate query for a vibe and scores each one. Strips known-junk
+    // sources before counting, so ranking reflects only grid-worthy results. Returns the
+    // full evaluated list (not just a winner) so rankCandidates can compare across all
+    // of them and pick the top RANKED_BATCH_LIMIT.
+    async function evaluateCandidates(queries){
+      var candidates = [];
+      for (var i = 0; i < queries.length; i++) {
+        var q = queries[i];
+        try {
+          var data = await fetchPreviewData(q);
+          var cleanResults = data.results.filter(function(r){ return !isJunkSource(r.source); });
+          candidates.push({
+            query: q,
+            results: cleanResults,
+            count: cleanResults.length,
+            distinctSources: countDistinctSources(cleanResults),
+            provider: data.provider
+          });
+        } catch (e) {
+          candidates.push({ query: q, results: [], count: 0, distinctSources: 0, provider: null });
+        }
+      }
+      return candidates;
+    }
+
+    // Ranked selector: drop sparse/junk-dominated batches, sort the rest by clean-result
+    // count (highest first), then source diversity, then a random jitter that only ever
+    // breaks a genuine remaining tie (same count, same diversity). Returns the ranked
+    // list so callers can take the top few instead of just one winner.
+    function rankCandidates(candidates){
+      var acceptable = candidates.filter(function(c){ return c.count >= MIN_VIABLE_RESULTS; });
+      var withJitter = acceptable.map(function(c){
+        var copy = {};
+        for (var k in c) copy[k] = c[k];
+        copy._jitter = Math.random();
+        return copy;
+      });
+      withJitter.sort(function(a, b){
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.distinctSources !== a.distinctSources) return b.distinctSources - a.distinctSources;
+        return b._jitter - a._jitter;
+      });
+      return withJitter;
+    }
+
+    var dailyGridState = { actorIdx: null, vibeIdx: null, rankedBatches: [], rankIndex: 0, chosen: null, loading: false, empty: false };
+    var dailyGridRequestId = 0;
+
+    function closeDailyGridModal(){
+      var overlay = document.getElementById('daily-grid-modal-overlay');
+      if (overlay) { overlay.classList.add('hidden'); overlay.innerHTML = ''; }
+    }
+
+    function openDailyGridModal(){
+      var r = getTodaysRandom();
+      if (!r) { showToast('今日召唤暂时迷路了'); return; }
+      dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, rankedBatches: [], rankIndex: 0, chosen: null, loading: true, empty: false };
+      renderDailyGridModal();
+      computeRankedBatches();
+    }
+
+    // Evaluates every candidate query for today's vibe once, ranks them, and keeps only
+    // the top RANKED_BATCH_LIMIT. The modal shows rank #1 by default; "next ranked
+    // batch" just cycles through this precomputed list — no extra fetches, no
+    // re-ranking, no randomness beyond the ordering already decided here.
+    async function computeRankedBatches(){
+      var requestId = ++dailyGridRequestId;
+      dailyGridState.loading = true;
+      dailyGridState.empty = false;
+      renderDailyGridModal();
+
+      var actor = ACTOR_PACKS[dailyGridState.actorIdx];
+      var vibe = actor.vibes[dailyGridState.vibeIdx];
+      var candidates = await evaluateCandidates(vibe.queries);
+      if (requestId !== dailyGridRequestId) return;
+
+      var ranked = rankCandidates(candidates).slice(0, RANKED_BATCH_LIMIT);
+      dailyGridState.rankedBatches = ranked;
+      dailyGridState.rankIndex = 0;
+      dailyGridState.chosen = ranked[0] || null;
+      dailyGridState.loading = false;
+      dailyGridState.empty = !ranked.length;
+      renderDailyGridModal();
+    }
+
+    // "Next ranked batch": cycles through the precomputed top-N list (rank 1 -> 2 -> 3
+    // -> back to 1), not a random pick and not a re-fetch.
+    function showNextRankedBatch(){
+      var batches = dailyGridState.rankedBatches;
+      if (!batches.length) return;
+      if (batches.length === 1) { showToast('今天这个氛围只有一批扛得住'); return; }
+      dailyGridState.rankIndex = (dailyGridState.rankIndex + 1) % batches.length;
+      if (dailyGridState.rankIndex === 0) { showToast('这是今天最靠谱的组合啦，回到第一批'); }
+      dailyGridState.chosen = batches[dailyGridState.rankIndex];
+      renderDailyGridModal();
+    }
+
+    function renderDailyGridModal(){
+      var overlay = document.getElementById('daily-grid-modal-overlay');
+      if (!overlay) return;
+
+      if (dailyGridState.actorIdx === null) { overlay.classList.add('hidden'); overlay.innerHTML = ''; return; }
+
+      var actor = ACTOR_PACKS[dailyGridState.actorIdx];
+      var vibe = actor.vibes[dailyGridState.vibeIdx];
+
+      var h = '<div class="modal-card">';
+      h += '<div class="modal-header"><div class="modal-title">🔮 今日之星 · 氛围格子<div class="en-helper" style="font-weight:400;">Today\'s Star + Vibe preview</div></div><button id="daily-grid-close" class="modal-close">✕</button></div>';
+      h += '<div class="modal-star-vibe">今日之星：<strong style="color:'+actor.accentColor+';">'+actor.name+'</strong><span class="en-helper-inline"> · Star: '+actor.shortName_en+'</span></div>';
+      h += '<div class="modal-star-vibe">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Vibe: '+vibe.label_en+'</span></div>';
+      h += '<div class="modal-subtitle">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
+
+      var activeQuery = dailyGridState.chosen ? dailyGridState.chosen.query : (dailyGridState.loading ? '正在挑选可用咒语……' : '');
+      h += '<div class="modal-spell-row"><div class="modal-spell-text">🔍 '+activeQuery+'</div><button id="daily-grid-copy-spell" class="modal-spell-copy">复制咒语<span class="en-helper-inline"> · Copy</span></button></div>';
+
+      // Lightweight trace line: rank position, clean result count, source diversity,
+      // provider — enough to sanity-check "why this batch won" without exposing the
+      // full hidden ladder (raw per-engine attempts, subject-guard internals, etc).
+      if (dailyGridState.chosen) {
+        var c = dailyGridState.chosen;
+        h += '<div style="font-size:10.5px;color:#555;margin:-6px 0 12px;">第 '+(dailyGridState.rankIndex+1)+' / '+dailyGridState.rankedBatches.length+' 名 · '+c.count+' 张图 · '+c.distinctSources+' 个来源'+(c.provider ? ' · '+c.provider : '')+'<span class="en-helper-inline"> · Rank '+(dailyGridState.rankIndex+1)+' of '+dailyGridState.rankedBatches.length+', '+c.count+' results, '+c.distinctSources+' sources'+(c.provider ? ', '+c.provider : '')+'</span></div>';
+      }
+
+      h += '<p id="daily-grid-status" class="preview-status"></p>';
+      h += '<div id="daily-grid-image-grid" class="preview-image-grid"></div>';
+      h += '<div id="daily-grid-sources" class="modal-sources"></div>';
+
+      h += '<div class="modal-cta-row">';
+      h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
+      h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
+      h += '</div>';
+      h += '</div>';
+
+      overlay.innerHTML = h;
+      overlay.classList.remove('hidden');
+
+      var closeBtn = document.getElementById('daily-grid-close'); if (closeBtn) closeBtn.addEventListener('click', closeDailyGridModal);
+      overlay.onclick = function(e){ if (e.target === overlay) closeDailyGridModal(); };
+      var anotherBtn = document.getElementById('daily-grid-another'); if (anotherBtn) anotherBtn.addEventListener('click', showNextRankedBatch);
+      var openFullBtn = document.getElementById('daily-grid-open-full'); if (openFullBtn) openFullBtn.addEventListener('click', function(){
+        closeDailyGridModal();
+        state.actorIdx = dailyGridState.actorIdx;
+        state.vibeIdx = dailyGridState.vibeIdx;
+        state.queryIdx = 0;
+        state.customQuery = dailyGridState.chosen ? dailyGridState.chosen.query : null;
+        state.showCustom = false;
+        state.showMJ = false;
+        state.page = 'vibe';
+        state.fromRandom = true;
+        render();
+      });
+      var copySpellBtn = document.getElementById('daily-grid-copy-spell'); if (copySpellBtn) copySpellBtn.addEventListener('click', function(){
+        if (!dailyGridState.chosen) return;
+        var q = dailyGridState.chosen.query;
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
+      });
+
+      var statusEl = document.getElementById('daily-grid-status');
+      var gridEl = document.getElementById('daily-grid-image-grid');
+      var sourcesEl = document.getElementById('daily-grid-sources');
+      if (statusEl && gridEl) {
+        if (dailyGridState.loading) {
+          statusEl.textContent = '正在挑一批不寒酸的图……';
+          gridEl.innerHTML = '';
+          if (sourcesEl) sourcesEl.innerHTML = '';
+        } else if (dailyGridState.empty) {
+          statusEl.textContent = '今天这个氛围有点难找，试试打开完整页面。';
+          gridEl.innerHTML = '';
+          if (sourcesEl) sourcesEl.innerHTML = '';
+        } else if (dailyGridState.chosen) {
+          renderImageGrid(gridEl, statusEl, dailyGridState.chosen.results, dailyGridState.chosen.query);
+          if (sourcesEl) {
+            var sources = [];
+            dailyGridState.chosen.results.forEach(function(r){ if (r.source && sources.indexOf(r.source) === -1) sources.push(r.source); });
+            sourcesEl.innerHTML = sources.length
+              ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map(function(s){ return '<span class="source-chip">'+s+'</span>'; }).join('')
+              : '';
+          }
+        }
+      }
+    }
+
 
     function handleRefresh(){ 
       if(state.customQuery){
@@ -350,7 +624,7 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:#555;font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<button id="btn-random" class="btn-primary" style="margin-bottom:28px;">✨ 今日随机<div class="en-helper" style="font-weight:400;">Today\'s pick</div></button>';
+      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:#666;margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:#444;font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:#2a2a35;font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -431,7 +705,7 @@
     function bindEvents(){
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       if(state.page==='home'){
-        var rb=document.getElementById('btn-random'); if(rb)rb.addEventListener('click',goRandom);
+        var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
       if(state.page==='actor'){
