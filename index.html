@@ -131,6 +131,12 @@
     .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, #14141a 8%, #1c1c24 18%, #14141a 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
+    /* Full modal 3x3 "receipts card" — same warm border/glow language as the inline
+       teaser, but scoped to #daily-grid-image-grid only (its own id) so the shared
+       .preview-image-grid class used by the vibe page's own inline preview is
+       untouched. Border wraps the whole grid, not each image, keeping the photos
+       visually dominant. */
+    #daily-grid-image-grid { padding: 10px; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body data-id="0">
