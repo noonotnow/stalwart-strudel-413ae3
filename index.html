@@ -119,6 +119,25 @@
     .modal-sources .source-chip { display: inline-block; background: #1a1a26; border: 1px solid #2a2a35; border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: #888; }
     .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
+    /* Daily inline teaser: a quiet moodboard peek, not a results grid — no labels,
+       no badges, just images. Clicking any cell (or the summon button) opens the
+       full ranked modal. Desktop shows 6 images (3 cols x 2 rows), narrow shows 4
+       (2 cols x 2 rows) so it never feels like a cramped 3x3. */
+    .daily-card { margin: 0 auto 28px; max-width: 360px; }
+    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; padding: 10px; cursor: pointer; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); transition: border-color 0.2s, box-shadow 0.2s; }
+    .daily-inline-preview:hover { border-color: rgba(201,169,110,0.55); box-shadow: 0 8px 28px rgba(201,169,110,0.14), 0 2px 8px rgba(0,0,0,0.3); }
+    .daily-inline-cell { border-radius: 10px; overflow: hidden; background: #14141a; aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+    .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, #14141a 8%, #1c1c24 18%, #14141a 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
+    @keyframes daily-shimmer { to { background-position-x: -200%; } }
+    @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
+    /* "Receipts card" border/glow — same warm border/tint/shadow language as the
+       homepage inline teaser, applied to both grid containers that show full
+       result sets (daily modal + vibe page's full grid) so the treatment is
+       consistent everywhere a grid appears. Scoped by id so it never affects the
+       shared .preview-image-grid class itself (no unintended cascade). Border
+       wraps the whole grid, not each image, keeping the photos visually dominant. */
+    #daily-grid-image-grid, #preview-image-grid { padding: 10px; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body data-id="0">
@@ -245,8 +264,15 @@
 
     // Renders a result list into a preview-image-grid element, wiring up lazy-load,
     // broken-image cleanup, and click-through to the source link. Shared by the vibe
-    // page's inline preview and the daily grid modal.
-    function renderImageGrid(gridEl, statusEl, results, query, isStale) {
+    // page's full preview grid and the daily grid modal. showCaptions defaults to true
+    // but both current call sites pass false — large per-image source captions were
+    // removed everywhere the grid appears (vibe page's full grid + daily modal) in
+    // favor of a compact "Sources:" chip row below the grid (see fetchPreviewImages /
+    // renderDailyGridModal) so the grid reads as a moodboard, not search results, while
+    // still surfacing source data via the chip row/debug trace. The param is kept in
+    // case a future caller wants per-image captions back.
+    function renderImageGrid(gridEl, statusEl, results, query, isStale, showCaptions) {
+      if (showCaptions === undefined) showCaptions = true;
       gridEl.innerHTML = "";
 
       if (!results.length) {
@@ -274,17 +300,18 @@
           }
         };
 
-        const caption = document.createElement("div");
-        caption.className = "preview-image-caption";
-        caption.textContent = item.source || "点开看原图";
-
         if (item.link) {
           card.onclick = () =>
             window.open(item.link, "_blank", "noopener,noreferrer");
         }
 
         card.appendChild(img);
-        card.appendChild(caption);
+        if (showCaptions) {
+          const caption = document.createElement("div");
+          caption.className = "preview-image-caption";
+          caption.textContent = item.source || "点开看原图";
+          card.appendChild(caption);
+        }
         gridEl.appendChild(card);
       });
 
@@ -296,6 +323,7 @@
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
       const gridEl = document.getElementById("preview-image-grid");
+      const sourcesEl = document.getElementById("preview-image-sources");
 
       if (!statusEl || !gridEl) return;
 
@@ -303,11 +331,19 @@
 
       statusEl.textContent = "正在召唤氛围图……";
       gridEl.innerHTML = "";
+      if (sourcesEl) sourcesEl.innerHTML = "";
 
       try {
         const { results } = await fetchPreviewData(query);
         if (requestId !== previewRequestId) return;
-        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId);
+        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId, false);
+        if (sourcesEl) {
+          const sources = [];
+          results.forEach((r) => { if (r.source && sources.indexOf(r.source) === -1) sources.push(r.source); });
+          sourcesEl.innerHTML = sources.length
+            ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map((s) => '<span class="source-chip">' + s + '</span>').join('')
+            : '';
+        }
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
@@ -434,44 +470,95 @@
       return withJitter;
     }
 
-    var dailyGridState = { actorIdx: null, vibeIdx: null, rankedBatches: [], rankIndex: 0, chosen: null, loading: false, empty: false };
+    // date: caches which day's ranked batches are currently held, so returning to the
+    // homepage (or opening the modal after the inline teaser already loaded) reuses
+    // the same computed ranking instead of re-fetching.
+    var dailyGridState = { actorIdx: null, vibeIdx: null, rankedBatches: [], rankIndex: 0, chosen: null, loading: false, empty: false, date: null };
     var dailyGridRequestId = 0;
+    var dailyGridLoadPromise = null;
 
     function closeDailyGridModal(){
       var overlay = document.getElementById('daily-grid-modal-overlay');
       if (overlay) { overlay.classList.add('hidden'); overlay.innerHTML = ''; }
     }
 
-    function openDailyGridModal(){
+    // Seeds dailyGridState for today's actor/vibe if it isn't already holding today's
+    // date (a fresh day resets the cached ranking; the same day reuses it). Returns
+    // false if today's seed can't be computed (e.g. no actor packs loaded).
+    function seedDailyGridStateIfNeeded(){
       var r = getTodaysRandom();
-      if (!r) { showToast('今日召唤暂时迷路了'); return; }
-      dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, rankedBatches: [], rankIndex: 0, chosen: null, loading: true, empty: false };
-      renderDailyGridModal();
-      computeRankedBatches();
+      if (!r) return false;
+      if (dailyGridState.date !== r.date) {
+        dailyGridState = { actorIdx: r.aIdx, vibeIdx: r.vIdx, rankedBatches: [], rankIndex: 0, chosen: null, loading: false, empty: false, date: r.date };
+      }
+      return true;
     }
 
     // Evaluates every candidate query for today's vibe once, ranks them, and keeps only
-    // the top RANKED_BATCH_LIMIT. The modal shows rank #1 by default; "next ranked
-    // batch" just cycles through this precomputed list — no extra fetches, no
-    // re-ranking, no randomness beyond the ordering already decided here.
-    async function computeRankedBatches(){
+    // the top RANKED_BATCH_LIMIT. Both the homepage inline teaser and the full modal
+    // read from this same precomputed dailyGridState — whichever triggers first (inline
+    // teaser on homepage load, or modal if opened directly) does the fetch, the other
+    // just reuses the cached result. "Next ranked batch" cycles this list without any
+    // extra fetches, re-ranking, or randomness beyond the ordering already decided here.
+    async function ensureDailyGridLoaded(){
+      if (!seedDailyGridStateIfNeeded()) return;
+      if (dailyGridState.rankedBatches.length || dailyGridState.empty) { renderInlineDailyPreview(); return; }
+      if (dailyGridLoadPromise) return dailyGridLoadPromise;
+
       var requestId = ++dailyGridRequestId;
       dailyGridState.loading = true;
-      dailyGridState.empty = false;
-      renderDailyGridModal();
+      renderInlineDailyPreview();
+      if (!document.getElementById('daily-grid-modal-overlay').classList.contains('hidden')) renderDailyGridModal();
 
-      var actor = ACTOR_PACKS[dailyGridState.actorIdx];
-      var vibe = actor.vibes[dailyGridState.vibeIdx];
-      var candidates = await evaluateCandidates(vibe.queries);
-      if (requestId !== dailyGridRequestId) return;
+      dailyGridLoadPromise = (async function(){
+        var actor = ACTOR_PACKS[dailyGridState.actorIdx];
+        var vibe = actor.vibes[dailyGridState.vibeIdx];
+        var candidates = await evaluateCandidates(vibe.queries);
+        dailyGridLoadPromise = null;
+        if (requestId !== dailyGridRequestId) return;
 
-      var ranked = rankCandidates(candidates).slice(0, RANKED_BATCH_LIMIT);
-      dailyGridState.rankedBatches = ranked;
-      dailyGridState.rankIndex = 0;
-      dailyGridState.chosen = ranked[0] || null;
-      dailyGridState.loading = false;
-      dailyGridState.empty = !ranked.length;
+        var ranked = rankCandidates(candidates).slice(0, RANKED_BATCH_LIMIT);
+        dailyGridState.rankedBatches = ranked;
+        dailyGridState.rankIndex = 0;
+        dailyGridState.chosen = ranked[0] || null;
+        dailyGridState.loading = false;
+        dailyGridState.empty = !ranked.length;
+        renderInlineDailyPreview();
+        if (!document.getElementById('daily-grid-modal-overlay').classList.contains('hidden')) renderDailyGridModal();
+      })();
+      return dailyGridLoadPromise;
+    }
+
+    // Homepage teaser: a quiet 6-image (desktop) / 4-image (narrow, via CSS) peek at
+    // rank #1, no captions/badges/text. Only touches its own container so it never
+    // fights with the rest of the homepage render. Clicking any cell opens the full
+    // modal, same as the summon button.
+    function renderInlineDailyPreview(){
+      var el = document.getElementById('daily-inline-preview');
+      if (!el) return;
+
+      if (dailyGridState.loading || (!dailyGridState.chosen && !dailyGridState.empty)) {
+        var skeleton = '';
+        for (var i = 0; i < 6; i++) skeleton += '<div class="daily-inline-cell is-skeleton"></div>';
+        el.innerHTML = skeleton;
+        return;
+      }
+
+      if (dailyGridState.empty || !dailyGridState.chosen) {
+        el.innerHTML = '';
+        return;
+      }
+
+      var results = dailyGridState.chosen.results.slice(0, 6);
+      el.innerHTML = results.map(function(item){
+        return '<div class="daily-inline-cell"><img src="'+escapeAttr(item.thumbnail)+'" alt="" loading="lazy" referrerpolicy="no-referrer"></div>';
+      }).join('');
+    }
+
+    function openDailyGridModal(){
+      if (!seedDailyGridStateIfNeeded()) { showToast('今日召唤暂时迷路了'); return; }
       renderDailyGridModal();
+      ensureDailyGridLoaded();
     }
 
     // "Next ranked batch": cycles through the precomputed top-N list (rank 1 -> 2 -> 3
@@ -559,7 +646,7 @@
           gridEl.innerHTML = '';
           if (sourcesEl) sourcesEl.innerHTML = '';
         } else if (dailyGridState.chosen) {
-          renderImageGrid(gridEl, statusEl, dailyGridState.chosen.results, dailyGridState.chosen.query);
+          renderImageGrid(gridEl, statusEl, dailyGridState.chosen.results, dailyGridState.chosen.query, undefined, false);
           if (sourcesEl) {
             var sources = [];
             dailyGridState.chosen.results.forEach(function(r){ if (r.source && sources.indexOf(r.source) === -1) sources.push(r.source); });
@@ -624,7 +711,8 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:#555;font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button>';
+      h+='<div class="daily-card"><div id="daily-inline-preview" class="daily-inline-preview"></div>';
+      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:#666;margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:#444;font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:#2a2a35;font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -668,6 +756,7 @@
       h+='</div>';
       h+='<p id="preview-image-status" class="preview-status"></p>';
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
+      h+='<div id="preview-image-sources" class="modal-sources"></div>';
       h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:#555;margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
@@ -700,12 +789,13 @@
       h+='</div>'; return h;
     }
 
-    function render(){ var app=document.getElementById('app'); var html=''; if(state.page==='home')html=renderHome(); else if(state.page==='actor')html=renderActorPage(); else if(state.page==='vibe')html=renderVibePage(); app.innerHTML=html; bindEvents(); var vibe; if(state.page==='vibe') { vibe=ACTOR_PACKS[state.actorIdx] && ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; if(vibe) { var activeQuery=state.customQuery||vibe.queries[state.queryIdx]; fetchPreviewImages(activeQuery); } } }
+    function render(){ var app=document.getElementById('app'); var html=''; if(state.page==='home')html=renderHome(); else if(state.page==='actor')html=renderActorPage(); else if(state.page==='vibe')html=renderVibePage(); app.innerHTML=html; bindEvents(); var vibe; if(state.page==='vibe') { vibe=ACTOR_PACKS[state.actorIdx] && ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; if(vibe) { var activeQuery=state.customQuery||vibe.queries[state.queryIdx]; fetchPreviewImages(activeQuery); } } if(state.page==='home') { ensureDailyGridLoaded(); } }
 
     function bindEvents(){
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       if(state.page==='home'){
         var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
+        var dip=document.getElementById('daily-inline-preview'); if(dip)dip.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
       if(state.page==='actor'){
