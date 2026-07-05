@@ -131,12 +131,13 @@
     .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, #14141a 8%, #1c1c24 18%, #14141a 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
-    /* Full modal 3x3 "receipts card" — same warm border/glow language as the inline
-       teaser, but scoped to #daily-grid-image-grid only (its own id) so the shared
-       .preview-image-grid class used by the vibe page's own inline preview is
-       untouched. Border wraps the whole grid, not each image, keeping the photos
-       visually dominant. */
-    #daily-grid-image-grid { padding: 10px; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); }
+    /* "Receipts card" border/glow — same warm border/tint/shadow language as the
+       homepage inline teaser, applied to both grid containers that show full
+       result sets (daily modal + vibe page's full grid) so the treatment is
+       consistent everywhere a grid appears. Scoped by id so it never affects the
+       shared .preview-image-grid class itself (no unintended cascade). Border
+       wraps the whole grid, not each image, keeping the photos visually dominant. */
+    #daily-grid-image-grid, #preview-image-grid { padding: 10px; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body data-id="0">
@@ -263,11 +264,13 @@
 
     // Renders a result list into a preview-image-grid element, wiring up lazy-load,
     // broken-image cleanup, and click-through to the source link. Shared by the vibe
-    // page's inline preview and the daily grid modal. showCaptions defaults to true
-    // (vibe page keeps its per-image source labels); the daily grid modal passes
-    // false since attribution now lives in a compact chip row below the grid instead
-    // (see renderDailyGridModal) — keeps the grid feeling like a moodboard, not
-    // search results, while still surfacing source data via the chip row/debug trace.
+    // page's full preview grid and the daily grid modal. showCaptions defaults to true
+    // but both current call sites pass false — large per-image source captions were
+    // removed everywhere the grid appears (vibe page's full grid + daily modal) in
+    // favor of a compact "Sources:" chip row below the grid (see fetchPreviewImages /
+    // renderDailyGridModal) so the grid reads as a moodboard, not search results, while
+    // still surfacing source data via the chip row/debug trace. The param is kept in
+    // case a future caller wants per-image captions back.
     function renderImageGrid(gridEl, statusEl, results, query, isStale, showCaptions) {
       if (showCaptions === undefined) showCaptions = true;
       gridEl.innerHTML = "";
@@ -320,6 +323,7 @@
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
       const gridEl = document.getElementById("preview-image-grid");
+      const sourcesEl = document.getElementById("preview-image-sources");
 
       if (!statusEl || !gridEl) return;
 
@@ -327,11 +331,19 @@
 
       statusEl.textContent = "正在召唤氛围图……";
       gridEl.innerHTML = "";
+      if (sourcesEl) sourcesEl.innerHTML = "";
 
       try {
         const { results } = await fetchPreviewData(query);
         if (requestId !== previewRequestId) return;
-        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId);
+        renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId, false);
+        if (sourcesEl) {
+          const sources = [];
+          results.forEach((r) => { if (r.source && sources.indexOf(r.source) === -1) sources.push(r.source); });
+          sourcesEl.innerHTML = sources.length
+            ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map((s) => '<span class="source-chip">' + s + '</span>').join('')
+            : '';
+        }
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
@@ -744,6 +756,7 @@
       h+='</div>';
       h+='<p id="preview-image-status" class="preview-status"></p>';
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
+      h+='<div id="preview-image-sources" class="modal-sources"></div>';
       h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:#555;margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
