@@ -453,6 +453,7 @@
       h += '<div class="modal-cta-row">';
       h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
       h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
+      h += '<button id="daily-grid-share-card" class="btn-secondary">📤 保存分享卡<div class="en-helper" style="font-weight:400;">Save share card</div></button>';
       h += '</div>';
       h += '</div>';
 
@@ -479,6 +480,7 @@
         var q = dailyGridState.chosen.query;
         if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
       });
+      var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', handleSaveShareCard);
 
       var statusEl = document.getElementById('daily-grid-status');
       var gridEl = document.getElementById('daily-grid-image-grid');
@@ -502,6 +504,368 @@
               : '';
           }
         }
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Shareable "thirst trap" export card (Phase 1: full 1080x1350 card only —
+    // no teaser/2x3/2x2 variant yet, that's a separate follow-up).
+    //
+    // Grid images are hotlinked directly from arbitrary third-party CDNs with
+    // no CORS headers, so drawImage()-ing them straight into a <canvas> taints
+    // it and toBlob()/toDataURL() throw a SecurityError. We route every grid
+    // image through /.netlify/functions/image-proxy (server-to-server fetch,
+    // re-served with Access-Control-Allow-Origin: *) and set
+    // img.crossOrigin = "anonymous" on the client <img>, which keeps the
+    // canvas untainted.
+    // ---------------------------------------------------------------------
+
+    var EXPORT_CARD_W = 1080;
+    var EXPORT_CARD_H = 1350;
+
+    // Loads a single grid thumbnail through the image proxy. Resolves to an
+    // Image on success; resolves to null (never rejects) on failure so one
+    // bad thumbnail doesn't abort the whole export — the grid layout just
+    // skips/placeholders that tile.
+    function loadProxiedImage(originalUrl) {
+      return new Promise(function (resolve) {
+        if (!originalUrl) { resolve(null); return; }
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { resolve(null); };
+        img.src = '/.netlify/functions/image-proxy?url=' + encodeURIComponent(originalUrl);
+      });
+    }
+
+    // Draws `img` cover-fit (crop to fill, preserve aspect) into the rounded
+    // rect (x, y, w, h) on ctx, radius `r`.
+    function drawCoverImageRounded(ctx, img, x, y, w, h, r) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.clip();
+
+      var srcW = img.naturalWidth || img.width;
+      var srcH = img.naturalHeight || img.height;
+      var srcRatio = srcW / srcH;
+      var dstRatio = w / h;
+      var sx, sy, sw, sh;
+      if (srcRatio > dstRatio) {
+        // source wider than dest -> crop left/right
+        sh = srcH;
+        sw = srcH * dstRatio;
+        sx = (srcW - sw) / 2;
+        sy = 0;
+      } else {
+        // source taller than dest -> crop top/bottom
+        sw = srcW;
+        sh = srcW / dstRatio;
+        sx = 0;
+        sy = (srcH - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+      ctx.restore();
+    }
+
+    // Draws a placeholder (failed-to-load) tile: subtle rounded rect, no image.
+    function drawPlaceholderTileRounded(ctx, x, y, w, h, r, fillColor) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Greedy word-wrap for canvas text. Works for both CJK (wraps per-character,
+    // since there are no spaces) and Latin (wraps per-word) by splitting on a
+    // regex that keeps CJK characters as individual tokens and Latin runs as
+    // whole words.
+    function wrapCanvasText(ctx, text, maxWidth) {
+      if (!text) return [];
+      var tokens = text.match(/[\u3000-\u9fff\uff00-\uffef]|[^\u3000-\u9fff\uff00-\uffef\s]+|\s+/g) || [text];
+      var lines = [];
+      var current = '';
+      tokens.forEach(function (tok) {
+        var candidate = current + tok;
+        if (current && ctx.measureText(candidate).width > maxWidth) {
+          lines.push(current.trim());
+          current = tok;
+        } else {
+          current = candidate;
+        }
+      });
+      if (current.trim()) lines.push(current.trim());
+      return lines;
+    }
+
+    // Builds the full 1080x1350 share card for today's chosen batch and
+    // returns a Promise<HTMLCanvasElement>. `variant` is reserved for a future
+    // teaser layout ('2x3'/'2x2') — only 'full' is implemented in this phase.
+    async function renderExportCanvas(payload, variant) {
+      variant = variant || 'full';
+      if (variant !== 'full') {
+        throw new Error('Unsupported export variant: ' + variant + ' (only "full" is implemented so far)');
+      }
+
+      var actor = payload.actor;
+      var vibe = payload.vibe;
+      var chosen = payload.chosen;
+      var results = (chosen && Array.isArray(chosen.results)) ? chosen.results.slice(0, 9) : [];
+
+      // Make sure the webfonts already linked in <head> are actually ready
+      // before we measure/draw text, so CJK + Latin both render crisply
+      // instead of momentarily falling back to a system font mid-draw.
+      try {
+        await Promise.all([
+          document.fonts.load('400 16px "Noto Sans SC"'),
+          document.fonts.load('600 16px "Noto Sans SC"'),
+          document.fonts.load('700 16px "Noto Sans SC"'),
+          document.fonts.load('400 16px "Inter"'),
+          document.fonts.load('600 16px "Inter"'),
+          document.fonts.load('700 16px "Inter"'),
+          document.fonts.ready
+        ]);
+      } catch (e) {
+        // Non-fatal — worst case the card draws with a fallback system font.
+      }
+
+      // Kick off all image loads in parallel — each one independently
+      // resolves to an Image or null, never rejects.
+      var imagesPromise = Promise.all(results.map(function (r) { return loadProxiedImage(r.thumbnail); }));
+
+      var rootStyle = getComputedStyle(document.documentElement);
+      var COLOR_BG = (rootStyle.getPropertyValue('--bg') || '#0e0e12').trim();
+      var COLOR_BG_CARD = (rootStyle.getPropertyValue('--bg-card') || '#14141a').trim();
+      var COLOR_TEXT = (rootStyle.getPropertyValue('--text') || '#f0ede8').trim();
+      var COLOR_TEXT_MUTED = (rootStyle.getPropertyValue('--text-muted') || '#a3a3ad').trim();
+      var COLOR_TEXT_DIM = (rootStyle.getPropertyValue('--text-dim') || '#8f8f99').trim();
+      var COLOR_TEXT_DARKER = (rootStyle.getPropertyValue('--text-darker') || '#6b6b6b').trim();
+      var COLOR_GOLD = (rootStyle.getPropertyValue('--gold') || '#c9a96e').trim();
+      var accentColor = (actor && actor.accentColor) || COLOR_GOLD;
+
+      var canvas = document.createElement('canvas');
+      canvas.width = EXPORT_CARD_W;
+      canvas.height = EXPORT_CARD_H;
+      var ctx = canvas.getContext('2d');
+
+      var PAD = 64;
+      var contentW = EXPORT_CARD_W - PAD * 2;
+
+      // Background: near-black base + a soft radial glow of the accent color
+      // behind the header, so the card reads as a designed editorial piece
+      // rather than a flat screenshot.
+      ctx.fillStyle = COLOR_BG;
+      ctx.fillRect(0, 0, EXPORT_CARD_W, EXPORT_CARD_H);
+      var glow = ctx.createRadialGradient(
+        EXPORT_CARD_W / 2, 260, 40,
+        EXPORT_CARD_W / 2, 260, 620
+      );
+      glow.addColorStop(0, hexToRgba(accentColor, 0.16));
+      glow.addColorStop(1, hexToRgba(accentColor, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, EXPORT_CARD_W, EXPORT_CARD_H);
+
+      ctx.textAlign = 'center';
+      var cx = EXPORT_CARD_W / 2;
+      var y = PAD - 8;
+
+      // 1. Series/section label
+      y += 34;
+      ctx.font = '600 24px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = COLOR_GOLD;
+      ctx.fillText('今日氛围图鉴', cx, y);
+
+      // 2. Title
+      y += 56;
+      ctx.font = '700 46px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = COLOR_TEXT;
+      ctx.fillText('🔮 今日之星 · 氛围格子', cx, y);
+
+      // 3. Actor name
+      if (actor && actor.name) {
+        y += 58;
+        ctx.font = '700 40px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = accentColor;
+        ctx.fillText(actor.name, cx, y);
+      }
+
+      // 4. Vibe name (with emoji)
+      if (vibe && vibe.label) {
+        y += 46;
+        ctx.font = '600 30px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = COLOR_TEXT;
+        ctx.fillText((vibe.emoji ? vibe.emoji + ' ' : '') + vibe.label, cx, y);
+      }
+
+      // 5. Spell/search phrase (may be long — wrap)
+      if (chosen && chosen.query) {
+        y += 44;
+        ctx.font = '400 24px "Inter", "Noto Sans SC", sans-serif';
+        ctx.fillStyle = COLOR_TEXT_MUTED;
+        var spellLines = wrapCanvasText(ctx, '🔍 ' + chosen.query, contentW - 40);
+        spellLines.slice(0, 2).forEach(function (line, i) {
+          ctx.fillText(line, cx, y + i * 32);
+        });
+        y += (Math.min(spellLines.length, 2) - 1) * 32;
+      }
+
+      // 6. Subtitle/mood line
+      if (vibe && vibe.subtitle) {
+        y += 40;
+        ctx.font = '400 22px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = COLOR_TEXT_DIM;
+        var subLines = wrapCanvasText(ctx, vibe.subtitle, contentW - 40);
+        subLines.slice(0, 2).forEach(function (line, i) {
+          ctx.fillText(line, cx, y + i * 30);
+        });
+        y += (Math.min(subLines.length, 2) - 1) * 30;
+      }
+
+      // 7. Full 3x3 image grid — reserve space for the footer zone (source
+      // line + brand signature) at a fixed distance from the bottom, then
+      // fit the largest square 3x3 grid into whatever vertical room remains
+      // between the header text (wherever it ended up, above) and that
+      // footer zone.
+      var footerZoneH = 130;
+      var gridTop = y + 36;
+      var gridBottom = EXPORT_CARD_H - footerZoneH;
+      var gridGap = 12;
+      var gridAvailW = contentW;
+      var gridAvailH = gridBottom - gridTop;
+      var tileSize = Math.min((gridAvailW - gridGap * 2) / 3, (gridAvailH - gridGap * 2) / 3);
+      tileSize = Math.max(tileSize, 40); // sanity floor so wildly long text can't produce negative/zero tiles
+      var gridW = tileSize * 3 + gridGap * 2;
+      var gridH = tileSize * 3 + gridGap * 2;
+      var gridX = (EXPORT_CARD_W - gridW) / 2;
+      var gridY = gridTop + Math.max(0, (gridAvailH - gridH) / 2);
+
+      var images = await imagesPromise;
+      for (var row = 0; row < 3; row++) {
+        for (var col = 0; col < 3; col++) {
+          var idx = row * 3 + col;
+          var tx = gridX + col * (tileSize + gridGap);
+          var ty = gridY + row * (tileSize + gridGap);
+          var img = images[idx];
+          if (img) {
+            drawCoverImageRounded(ctx, img, tx, ty, tileSize, tileSize, 14);
+          } else {
+            drawPlaceholderTileRounded(ctx, tx, ty, tileSize, tileSize, 14, COLOR_BG_CARD);
+          }
+        }
+      }
+
+      // 8. Sources — reduced/minimal single line, distinct + truncated.
+      var sourceNames = [];
+      results.forEach(function (r) {
+        if (r.source && sourceNames.indexOf(r.source) === -1) sourceNames.push(r.source);
+      });
+      var sourcesLineY = EXPORT_CARD_H - footerZoneH + 40;
+      if (sourceNames.length) {
+        ctx.font = '400 18px "Inter", "Noto Sans SC", sans-serif';
+        ctx.fillStyle = COLOR_TEXT_DARKER;
+        var sourcesText = '来源：' + sourceNames.slice(0, 5).join(' · ');
+        ctx.fillText(sourcesText, cx, sourcesLineY);
+      }
+
+      // 9. Footer/brand signature
+      ctx.font = '600 20px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = COLOR_GOLD;
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_CARD_H - PAD + 24);
+
+      return canvas;
+    }
+
+    // Converts a hex color (#rrggbb) to an rgba() string with the given alpha.
+    // Falls back to a neutral gold-ish gray if parsing fails (defensive —
+    // accentColor always comes from ACTOR_PACKS data, but this keeps the glow
+    // from erroring out on an unexpected format).
+    function hexToRgba(hex, alpha) {
+      var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec((hex || '').trim());
+      if (!m) return 'rgba(201,169,110,' + alpha + ')';
+      var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
+    // Wires up the "📤 保存分享卡" button: builds the export canvas, then tries
+    // navigator.share() (mobile-first, so it can go straight to Weibo/WeChat/
+    // whatever share sheet) and falls back to a plain download if sharing
+    // isn't available or the user cancels.
+    var shareCardInFlight = false;
+    async function handleSaveShareCard() {
+      if (shareCardInFlight) return;
+      if (!dailyGridState.chosen || !dailyGridState.actor || !dailyGridState.vibe) {
+        showToast('今天的图还没准备好');
+        return;
+      }
+      shareCardInFlight = true;
+      showToast('正在生成分享卡……');
+
+      try {
+        var canvas = await renderExportCanvas({
+          actor: dailyGridState.actor,
+          vibe: dailyGridState.vibe,
+          chosen: dailyGridState.chosen
+        }, 'full');
+
+        var blob = await new Promise(function (resolve) {
+          canvas.toBlob(function (b) { resolve(b); }, 'image/png');
+        });
+
+        if (!blob) {
+          showToast('分享卡生成失败，再试一次？');
+          shareCardInFlight = false;
+          return;
+        }
+
+        var dateStr = dailyGridState.date || new Date().toISOString().slice(0, 10);
+        var fileName = 'today-vibe-' + dateStr + '.png';
+        var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
+
+        var shared = false;
+        if (file && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: '今日氛围图鉴',
+              text: '🔮 今日之星 · 氛围格子'
+            });
+            shared = true;
+            showToast('分享成功 ✓');
+          } catch (shareErr) {
+            // User cancelled the share sheet, or the platform rejected it —
+            // fall through to the download fallback below rather than
+            // treating this as a hard failure.
+            shared = false;
+          }
+        }
+
+        if (!shared) {
+          var objectUrl = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = objectUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 4000);
+          showToast('分享卡已保存 ✓');
+        }
+      } catch (err) {
+        showToast('分享卡生成失败，再试一次？');
+      } finally {
+        shareCardInFlight = false;
       }
     }
 
