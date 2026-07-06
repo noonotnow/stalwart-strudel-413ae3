@@ -15,10 +15,15 @@
       --bg-card: #14141a;
       --bg-hover: #1a1a22;
       --text: #f0ede8;
-      --text-muted: #888;
-      --text-dim: #555;
-      --text-dark: #444;
-      --text-darker: #333;
+      /* Readability pass: these four tiers were audited for WCAG contrast
+         against the dark backgrounds above. --text-muted/--text-dim/--text-dark
+         now all clear 4.5:1 (AA for normal-size text); --text-darker is the one
+         intentionally-lower tier, reserved for purely decorative text (footer
+         signature, background taglines) that nobody needs to actually read. */
+      --text-muted: #a3a3ad;
+      --text-dim: #8f8f99;
+      --text-dark: #7e7e7e;
+      --text-darker: #6b6b6b;
       --gold: #c9a96e;
       --border: #2a2a35;
     }
@@ -37,11 +42,11 @@
       min-height: 100vh;
     }
     .page { padding-top: 28px; padding-bottom: 48px; }
-    .en-helper { display: none; font-size: 11px; color: #555; font-style: italic; margin-top: 3px; line-height: 1.4; }
-    .en-helper-inline { display: none; font-size: 11px; color: #555; font-style: italic; line-height: 1.4; }
+    .en-helper { display: none; font-size: 11px; color: var(--text-dim); font-style: italic; margin-top: 3px; line-height: 1.4; }
+    .en-helper-inline { display: none; font-size: 11px; color: var(--text-dim); font-style: italic; line-height: 1.4; }
     body.show-en .en-helper { display: block; }
     body.show-en .en-helper-inline { display: inline; }
-    #lang-toggle { background: #1a1a26; border: 1px solid #333; color: #555; font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: color 0.2s; white-space: nowrap; }
+    #lang-toggle { background: #1a1a26; border: 1px solid #333; color: var(--text-dim); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: color 0.2s; white-space: nowrap; }
     #lang-toggle:hover { color: #888; }
     .actor-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-radius: 14px; margin-bottom: 12px; cursor: pointer; transition: transform 0.2s, border-color 0.3s; }
     .actor-card:hover { transform: translateY(-2px); }
@@ -62,12 +67,12 @@
     .badge-random { display: inline-block; background: linear-gradient(135deg, #c9a96e22, #c9a96e11); border: 1px solid #c9a96e44; color: var(--gold); font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; }
     .preview-block { background: linear-gradient(135deg, #14141a 0%, #101018 100%); border: 1px solid #2a2a35; border-radius: 14px; padding: 14px; margin: 18px 0 16px; }
     .preview-title { color: var(--gold); font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-    .preview-subtitle { color: #555; font-size: 11px; font-style: italic; margin-bottom: 12px; }
+    .preview-subtitle { color: var(--text-dim); font-size: 11px; font-style: italic; margin-bottom: 12px; }
     .preview-card { border: 1px solid #2a2a35; border-radius: 12px; padding: 12px; background: #0e0e12; }
-    .preview-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 12px; color: #777; }
+    .preview-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 12px; color: var(--text-dim); }
     .preview-actor, .preview-vibe { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .preview-spell { border-top: 1px solid #24242e; padding-top: 10px; }
-    .spell-label { font-size: 11px; color: #555; margin-bottom: 5px; }
+    .spell-label { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
     .spell-query { color: #c9a96e; font-family: monospace; font-size: 12px; line-height: 1.5; word-break: break-word; }
     .preview-cta-row { display: flex; gap: 8px; margin-top: 12px; }
     .preview-btn { flex: 1; background: #1a1a26; border: 1px solid #333; color: #888; border-radius: 20px; padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -99,7 +104,7 @@
       font-size: 0.9rem;
       margin-top: 8px;
       opacity: 0.8;
-      color: #555;
+      color: var(--text-dim);
     }
     @media (max-width: 380px) { #app-wrapper { padding: 0 16px; } .actor-card { padding: 14px 16px; } .vibe-card { padding: 14px 16px; } }
     .modal-overlay { position: fixed; inset: 0; background: rgba(6,6,9,0.78); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding: 24px 16px; overflow-y: auto; }
@@ -115,7 +120,7 @@
     .modal-spell-text { flex: 1; color: var(--gold); font-family: monospace; font-size: 12px; word-break: break-word; }
     .modal-spell-copy { background: none; border: 1px solid #333; color: #888; font-size: 11px; padding: 4px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
     .modal-spell-copy:hover { color: var(--gold); border-color: #c9a96e55; }
-    .modal-sources { font-size: 11px; color: #666; margin-top: 10px; line-height: 1.6; }
+    .modal-sources { font-size: 11px; color: var(--text-dim); margin-top: 10px; line-height: 1.6; }
     .modal-sources .source-chip { display: inline-block; background: #1a1a26; border: 1px solid #2a2a35; border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: #888; }
     .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
@@ -432,7 +437,7 @@
       // full hidden ladder (raw per-engine attempts, subject-guard internals, etc).
       if (dailyGridState.chosen) {
         var c = dailyGridState.chosen;
-        h += '<div style="font-size:10.5px;color:#555;margin:-6px 0 12px;">第 '+(dailyGridState.rankIndex+1)+' / '+dailyGridState.rankedBatches.length+' 名 · '+c.count+' 张图 · '+c.distinctSources+' 个来源'+(c.provider ? ' · '+c.provider : '')+'<span class="en-helper-inline"> · Rank '+(dailyGridState.rankIndex+1)+' of '+dailyGridState.rankedBatches.length+', '+c.count+' results, '+c.distinctSources+' sources'+(c.provider ? ', '+c.provider : '')+'</span></div>';
+        h += '<div style="font-size:10.5px;color:var(--text-dim);margin:-6px 0 12px;">第 '+(dailyGridState.rankIndex+1)+' / '+dailyGridState.rankedBatches.length+' 名 · '+c.count+' 张图 · '+c.distinctSources+' 个来源'+(c.provider ? ' · '+c.provider : '')+'<span class="en-helper-inline"> · Rank '+(dailyGridState.rankIndex+1)+' of '+dailyGridState.rankedBatches.length+', '+c.count+' results, '+c.distinctSources+' sources'+(c.provider ? ', '+c.provider : '')+'</span></div>';
       }
 
       h += '<p id="daily-grid-status" class="preview-status"></p>';
@@ -538,7 +543,7 @@
     function copyPrompt(){ var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; navigator.clipboard.writeText(vibe.mjPrompt).then(function(){showToast('提示词已复制 ✓');}); }
     function copyShareText(){ var actor=ACTOR_PACKS[state.actorIdx],vibe=actor.vibes[state.vibeIdx]; var text='🖤 姐妹们看这里！！\n\n今天刷的'+actor.name+'氛围太好了，'+vibe.shareFragment+'\n\n'+vibe.emoji+' '+vibe.label+'\n'+vibe.subtitle+'\n\n#'+actor.name+'# #氛围图鉴#'; navigator.clipboard.writeText(text).then(function(){var btn=document.getElementById('share-btn');if(btn){var orig=btn.innerHTML;btn.textContent='✓ 已复制，去安利姐妹吧';setTimeout(function(){btn.innerHTML=orig;},2000);}}); }
 
-    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:#444;letter-spacing:0.05em;">氛围图鉴</span><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英文提示')+'</button></div>'; }
+    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:var(--text-dark);letter-spacing:0.05em;">氛围图鉴</span><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英文提示')+'</button></div>'; }
 
     function escapeAttr(str){ if(!str)return ''; return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -546,13 +551,13 @@
       var h='<div class="page">'+renderHeader();
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
-      h+='<div style="font-size:13px;color:#555;font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
+      h+='<div style="font-size:13px;color:var(--text-dim);font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
       h+='<div class="daily-card"><div id="daily-inline-preview" class="daily-inline-preview"></div>';
       h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
       h+='</div>';
-      for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:#666;margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:#444;font-size:18px;">→</span></div>';}
-      h+='<div style="text-align:center;color:#2a2a35;font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
-      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:#333;">made by the power of friendship</span></footer>';
+      for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:var(--text-dark);font-size:18px;">→</span></div>';}
+      h+='<div style="text-align:center;color:var(--text-darker);font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
+      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:var(--text-darker);">made by the power of friendship</span></footer>';
       h+='</div>'; return h;
     }
 
@@ -563,8 +568,8 @@
       h+='<div style="font-size:22px;font-weight:700;color:'+actor.accentColor+';margin-bottom:4px;">'+actor.title+'<div class="en-helper">'+actor.title_en+'</div></div>';
       h+='<div style="font-size:14px;color:#c9a96e;font-style:italic;margin-bottom:24px;">姐妹今天想看哪种'+actor.shortName+'？<div class="en-helper">Which '+actor.shortName_en+' mood are we feeling today?</div></div>';
       for(var i=0;i<actor.vibes.length;i++){var v=actor.vibes[i];h+='<div class="vibe-card" data-vibe="'+i+'"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;"><span style="font-size:22px;">'+v.emoji+'</span><span style="font-size:15px;font-weight:600;">'+v.label+'<span class="en-helper-inline" style="font-size:11px;"> · '+v.label_en+'</span></span></div><div style="font-size:13px;color:#888;font-style:italic;">'+v.subtitle+'<div class="en-helper">'+v.subtitle_en+'</div></div></div>';}
-      h+='<div style="text-align:center;font-size:10px;color:#333;margin-top:24px;">三击副标题可自定义关键词 ✦<div class="en-helper">Triple-tap any vibe subtitle to enter custom search mode</div></div>';
-      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:#333;">made by the power of friendship</span></footer>';
+      h+='<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:24px;">三击副标题可自定义关键词 ✦<div class="en-helper">Triple-tap any vibe subtitle to enter custom search mode</div></div>';
+      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:var(--text-darker);">made by the power of friendship</span></footer>';
       h+='</div>'; return h;
     }
 
@@ -574,17 +579,17 @@
       h+='<button id="btn-back-vibe" class="btn-back">← 换个心情<span class="en-helper-inline"> · change vibe</span></button>';
       if(state.fromRandom){
         h+='<div class="badge-random">✨ 今日心动推荐</div><br>';
-        h+='<div style="font-size:11px;color:#666;margin-bottom:4px;">今日之星：'+actor.name+'<span class="en-helper-inline"> · Today\'s star: '+actor.shortName_en+'</span></div>';
-        h+='<div style="font-size:11px;color:#666;margin-bottom:10px;">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Today\'s vibe: '+vibe.label_en+'</span></div>';
+        h+='<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">今日之星：'+actor.name+'<span class="en-helper-inline"> · Today\'s star: '+actor.shortName_en+'</span></div>';
+        h+='<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Today\'s vibe: '+vibe.label_en+'</span></div>';
       }
-      h+='<div style="font-size:12px;color:#555;margin-bottom:8px;">'+actor.name+' · '+vibe.emoji+' '+vibe.label+'</div>';
+      h+='<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">'+actor.name+' · '+vibe.emoji+' '+vibe.label+'</div>';
       h+='<div id="vibe-subtitle" style="font-size:18px;color:'+actor.accentColor+';font-weight:600;line-height:1.5;cursor:pointer;user-select:none;margin-bottom:12px;">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
-      h+='<div id="query-display" style="font-size:13px;color:#444;font-family:monospace;margin-bottom:6px;">🔍 '+activeQuery+(state.customQuery?' · 自定义':'')+'</div>';
-      if(vibe.queries.length>1&&!state.customQuery)h+='<div style="font-size:10px;color:#666;margin-bottom:16px;">第 '+(state.queryIdx+1)+' 批 / '+vibe.queries.length+' 批<span class="en-helper-inline"> · Batch '+(state.queryIdx+1)+' of '+vibe.queries.length+'</span></div>';
+      h+='<div id="query-display" style="font-size:13px;color:var(--text-muted);font-family:monospace;margin-bottom:6px;">🔍 '+activeQuery+(state.customQuery?' · 自定义':'')+'</div>';
+      if(vibe.queries.length>1&&!state.customQuery)h+='<div style="font-size:10px;color:var(--text-dim);margin-bottom:16px;">第 '+(state.queryIdx+1)+' 批 / '+vibe.queries.length+' 批<span class="en-helper-inline"> · Batch '+(state.queryIdx+1)+' of '+vibe.queries.length+'</span></div>';
       h+='<section id="preview-section" class="preview-block">';
       h+='<div class="preview-title">先偷看一眼<div class="en-helper">Take a first peek</div></div>';
       h+='<div class="preview-subtitle">今天先刷这组<div class="en-helper">Start with this batch today</div></div>';
-      if(!state.customQuery && vibe.queries.length>1){ h+='<div style="font-size:10px;color:#555;margin-bottom:10px;line-height:1.5;">如果平台装死，点「换一批」换咒语<span class="en-helper-inline"> · If a platform goes quiet, try another spell</span></div>'; }
+      if(!state.customQuery && vibe.queries.length>1){ h+='<div style="font-size:10px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;">如果平台装死，点「换一批」换咒语<span class="en-helper-inline"> · If a platform goes quiet, try another spell</span></div>'; }
       h+='<div class="preview-card">';
       h+='<div class="preview-meta"><div class="preview-actor">'+actor.name+'</div><div class="preview-vibe">'+vibe.emoji+' '+vibe.label+'</div></div>';
       h+='<div class="preview-spell"><div class="spell-label">搜索咒语<span class="en-helper-inline"> · Search spell</span></div><div id="preview-query" class="spell-query">'+activeQuery+(state.customQuery?' · 自定义':'')+'</div></div>';
@@ -594,7 +599,7 @@
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
       h+='<div id="preview-image-sources" class="modal-sources"></div>';
       h+='</section>';
-      h+='<div id="external-search-section" style="font-size:11px;color:#555;margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
+      h+='<div id="external-search-section" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
       h+='<a href="'+weiboUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#e6162d;">微博搜图<div class="en-helper">Search Weibo</div></a>';
       h+='<a href="'+baiduImageUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#2932e1;">百度图片<div class="en-helper">Baidu Images</div></a>';
@@ -608,20 +613,20 @@
       h+='<div id="advanced-section" style="display:'+(state.showCustom?'block':'none')+';background:#0a0a12;border:1px solid #2a2a35;border-radius:8px;padding:14px;margin-bottom:20px;">';
       h+='<div style="font-size:12px;color:#c9a96e;margin-bottom:8px;">自定义关键词 ✦ 高级模式<div class="en-helper">Custom keywords · advanced mode</div></div>';
       h+='<input id="custom-input" type="text" value="'+escapeAttr(state.customQuery||activeQuery)+'" placeholder="输入你的搜图关键词" style="width:100%;background:#14141a;color:#f0ede8;border:1px solid #2a2a35;border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:6px;box-sizing:border-box;" />';
-      h+='<div style="font-size:11px;color:#444;margin-bottom:10px;">修改后点任意搜图按钮生效<div class="en-helper">Your phrase goes live when you tap any search button above</div></div>';
-      h+='<button id="btn-clear-custom" style="background:transparent;border:none;color:#555;font-size:12px;cursor:pointer;padding:0;">✕ 关闭并清除<span class="en-helper-inline"> · Close &amp; clear</span></button>';
+      h+='<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">修改后点任意搜图按钮生效<div class="en-helper">Your phrase goes live when you tap any search button above</div></div>';
+      h+='<button id="btn-clear-custom" style="background:transparent;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;padding:0;">✕ 关闭并清除<span class="en-helper-inline"> · Close &amp; clear</span></button>';
       h+='</div>';
       if(vibe.mjPrompt){
         h+='<div style="border:1px solid #2a2a35;border-radius:8px;overflow:hidden;margin-bottom:20px;">';
-        h+='<button id="btn-mj-toggle" style="width:100%;background:#14141a;color:#c9a96e;font-size:13px;padding:12px 16px;border:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;"><span>✨ Midjourney 出图提示词<span class="en-helper-inline" style="font-size:10px;color:#555;"> · prompt</span></span><span id="mj-arrow">'+(state.showMJ?'▲':'▼')+'</span></button>';
+        h+='<button id="btn-mj-toggle" style="width:100%;background:#14141a;color:#c9a96e;font-size:13px;padding:12px 16px;border:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;"><span>✨ Midjourney 出图提示词<span class="en-helper-inline" style="font-size:10px;color:var(--text-dim);"> · prompt</span></span><span id="mj-arrow">'+(state.showMJ?'▲':'▼')+'</span></button>';
         h+='<div id="mj-content" style="display:'+(state.showMJ?'block':'none')+';background:#0e0e12;padding:14px;">';
         h+='<textarea readonly style="width:100%;background:#14141a;color:#c9a96e;border:1px solid #2a2a35;border-radius:6px;padding:10px;font-size:11.5px;font-family:monospace;line-height:1.6;resize:none;box-sizing:border-box;min-height:100px;">'+vibe.mjPrompt+'</textarea>';
         h+='<div style="display:flex;gap:8px;margin-top:10px;"><button id="btn-copy-prompt" class="btn-primary" style="flex:1;font-size:13px;">复制提示词<span class="en-helper-inline"> · Copy prompt</span></button><a href="https://www.midjourney.com/imagine" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="flex:1;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;">打开 Midjourney ↗</a></div>';
         h+='</div></div>';
       }
       h+='<button id="share-btn" class="btn-primary" style="width:100%;margin-bottom:8px;">一键复制文案<div class="en-helper" style="font-weight:400;">Copy Weibo-ready caption</div></button>';
-      h+='<div style="text-align:center;font-size:10px;color:#333;margin-top:8px;">三击副标题可自定义关键词 ✦<div class="en-helper">Triple-tap the subtitle to enter custom keyword mode</div></div>';
-      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:#333;">made by the power of friendship</span></footer>';
+      h+='<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:8px;">三击副标题可自定义关键词 ✦<div class="en-helper">Triple-tap the subtitle to enter custom keyword mode</div></div>';
+      h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:var(--text-darker);">made by the power of friendship</span></footer>';
       h+='</div>'; return h;
     }
 
