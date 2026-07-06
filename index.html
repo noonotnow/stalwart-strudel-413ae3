@@ -286,16 +286,59 @@
     function relLuminance(rgb){ function ch(c){ c=c/255; return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4); } return 0.2126*ch(rgb[0])+0.7152*ch(rgb[1])+0.0722*ch(rgb[2]); }
     function contrastRatio(rgb1,rgb2){ var l1=relLuminance(rgb1),l2=relLuminance(rgb2); var lighter=Math.max(l1,l2),darker=Math.min(l1,l2); return (lighter+0.05)/(darker+0.05); }
     var LIGHT_BG_RGB = [255,249,240]; // #fff9f0, the lightest surface any accent text sits on
-    function accentTextColor(hex){
-      if (!hex || document.body.dataset.theme !== 'light') return hex;
+    // Generic contrast-safe darkener: HSL-darkens hex (boosting saturation
+    // slightly so it doesn't read washed-out) until it clears minRatio against
+    // a given background, walking lightness down in whole-percent steps.
+    // Shared by accentTextColor() (checked against the app's lightest surface)
+    // and actorCardStyle() (checked against each card's own tint, which is
+    // darker than that reference and needs its own pass — see note below).
+    function contrastSafeColor(hex, bgRgb, minRatio){
+      minRatio = minRatio || 4.5;
       var rgb = hexToRgbArr(hex);
       var hsl = rgbToHslArr(rgb[0],rgb[1],rgb[2]);
       var h = hsl[0], s = Math.min(100, hsl[1]*1.05), l = hsl[2];
       for (var newL = l; newL >= 15; newL -= 1) {
         var candidate = hslToRgbArr(h, s, newL);
-        if (contrastRatio(candidate, LIGHT_BG_RGB) >= 4.5) return rgbToHex(candidate);
+        if (contrastRatio(candidate, bgRgb) >= minRatio) return rgbToHex(candidate);
       }
       return rgbToHex(hslToRgbArr(h, s, 15));
+    }
+    function accentTextColor(hex){
+      if (!hex || document.body.dataset.theme !== 'light') return hex;
+      return contrastSafeColor(hex, LIGHT_BG_RGB);
+    }
+    // In dark mode, actor list cards use their pre-authored jewel-tone gradient
+    // (cardBg, backend data) unchanged — that's the proven, kept-as-is look.
+    // In light mode those same near-black gradients read as heavy dark slabs
+    // pasted onto a cream page, so this derives a soft, individualized tint per
+    // actor from their accentColor hue instead: a light two-stop gradient (each
+    // actor's hue keeps them visually distinct — gold, steel-blue, sea-glass,
+    // etc.) plus a subtle accent-tinted border/glow rather than a hard dark
+    // block. Saturation is clamped to a 35-70 band so pale accent hues (e.g.
+    // Zhang Linghe's muted sage) don't wash out to gray while punchier ones
+    // (e.g. Dylan's red) don't read neon on cream. Name text is contrast-checked
+    // against c2 (the gradient's darker/harder stop, not the generic app-wide
+    // LIGHT_BG_RGB reference) since these tints sit below that lightness —
+    // passing against the darker stop guarantees passing against the lighter
+    // one too.
+    function actorCardStyle(actor){
+      if (document.body.dataset.theme !== 'light') {
+        return { background: actor.cardBg, border: '1px solid '+actor.accentColor+'33', boxShadow: 'none', textColor: actor.accentColor };
+      }
+      var rgb = hexToRgbArr(actor.accentColor);
+      var hsl = rgbToHslArr(rgb[0], rgb[1], rgb[2]);
+      var h = hsl[0];
+      var s = Math.min(70, Math.max(35, hsl[1]));
+      var c1Rgb = hslToRgbArr(h, s, 93);
+      var c2Rgb = hslToRgbArr(h, Math.min(80, s + 8), 86);
+      var c1 = rgbToHex(c1Rgb);
+      var c2 = rgbToHex(c2Rgb);
+      return {
+        background: 'linear-gradient(135deg,'+c1+' 0%,'+c2+' 100%)',
+        border: '1px solid '+actor.accentColor+'66',
+        boxShadow: '0 3px 14px '+actor.accentColor+'26',
+        textColor: contrastSafeColor(actor.accentColor, c2Rgb, 4.6)
+      };
     }
     function goHome(){ state.page='home'; state.actorIdx=null; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goActor(idx){ if(idx!==undefined)state.actorIdx=idx; state.page='actor'; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
@@ -677,7 +720,7 @@
       h+='<div class="daily-card"><div id="daily-inline-preview" class="daily-inline-preview"></div>';
       h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
       h+='</div>';
-      for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];h+='<div class="actor-card" data-actor="'+i+'" style="background:'+a.cardBg+';border:1px solid '+a.accentColor+'33;"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+a.accentColor+';">'+a.name+'</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:var(--text-dark);font-size:18px;">→</span></div>';}
+      for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];var cs=actorCardStyle(a);h+='<div class="actor-card" data-actor="'+i+'" style="background:'+cs.background+';border:'+cs.border+';box-shadow:'+cs.boxShadow+';"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+cs.textColor+';">'+a.name+'</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:var(--text-dark);font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:var(--text-darker);font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
       h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:var(--text-darker);">made by the power of friendship</span></footer>';
       h+='</div>'; return h;
