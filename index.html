@@ -613,6 +613,7 @@
       h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
       h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
       h += '<button id="daily-grid-share-card" class="btn-secondary">📤 保存分享卡<div class="en-helper" style="font-weight:400;">Save share card</div></button>';
+      h += '<button id="daily-grid-share-card-teaser" class="btn-secondary">📤 保存分享卡（小图）<div class="en-helper" style="font-weight:400;">Save teaser card</div></button>';
       h += '</div>';
       h += '</div>';
 
@@ -639,7 +640,8 @@
         var q = dailyGridState.chosen.query;
         if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
       });
-      var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', handleSaveShareCard);
+      var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', function(){ handleSaveShareCard('full'); });
+      var shareCardTeaserBtn = document.getElementById('daily-grid-share-card-teaser'); if (shareCardTeaserBtn) shareCardTeaserBtn.addEventListener('click', function(){ handleSaveShareCard('teaser'); });
 
       var statusEl = document.getElementById('daily-grid-status');
       var gridEl = document.getElementById('daily-grid-image-grid');
@@ -667,8 +669,14 @@
     }
 
     // ---------------------------------------------------------------------
-    // Shareable "thirst trap" export card (Phase 1: full 1080x1350 card only —
-    // no teaser/2x3/2x2 variant yet, that's a separate follow-up).
+    // Shareable "thirst trap" export card.
+    //
+    // Phase 1 added the full 1080x1350 3x3 card ('full' variant). Phase 2
+    // adds a smaller/lighter 1080x1080 teaser card ('teaser' variant) with a
+    // 2x3 (or 2x2 fallback, when there are fewer than 6 results) image grid
+    // and a more compact header — meant for quicker inline sharing rather
+    // than the full moodboard. The 'full' variant's code path and pixel
+    // output are unchanged from Phase 1.
     //
     // Grid images are hotlinked directly from arbitrary third-party CDNs with
     // no CORS headers, so drawImage()-ing them straight into a <canvas> taints
@@ -681,6 +689,8 @@
 
     var EXPORT_CARD_W = 1080;
     var EXPORT_CARD_H = 1350;
+    var EXPORT_TEASER_W = 1080;
+    var EXPORT_TEASER_H = 1080;
 
     // Loads a single grid thumbnail through the image proxy. Resolves to an
     // Image on success; resolves to null (never rejects) on failure so one
@@ -769,13 +779,55 @@
       return lines;
     }
 
-    // Builds the full 1080x1350 share card for today's chosen batch and
-    // returns a Promise<HTMLCanvasElement>. `variant` is reserved for a future
-    // teaser layout ('2x3'/'2x2') — only 'full' is implemented in this phase.
+    // Loads the webfonts used by both export card variants, so CJK + Latin
+    // both render crisply instead of momentarily falling back to a system
+    // font mid-draw. Non-fatal on failure — worst case a fallback font draws.
+    async function loadExportCardFonts() {
+      try {
+        await Promise.all([
+          document.fonts.load('400 16px "Noto Sans SC"'),
+          document.fonts.load('600 16px "Noto Sans SC"'),
+          document.fonts.load('700 16px "Noto Sans SC"'),
+          document.fonts.load('400 16px "Inter"'),
+          document.fonts.load('600 16px "Inter"'),
+          document.fonts.load('700 16px "Inter"'),
+          document.fonts.ready
+        ]);
+      } catch (e) {
+        // Non-fatal — worst case the card draws with a fallback system font.
+      }
+    }
+
+    // Resolves the shared design-token colors (background/text/gold/accent)
+    // used by both export card variants, reading current CSS custom
+    // properties so the card matches whichever theme (dark/light) is active.
+    function readExportCardColors(actor) {
+      var rootStyle = getComputedStyle(document.documentElement);
+      var COLOR_BG = (rootStyle.getPropertyValue('--bg') || '#0e0e12').trim();
+      var COLOR_BG_CARD = (rootStyle.getPropertyValue('--bg-card') || '#14141a').trim();
+      var COLOR_TEXT = (rootStyle.getPropertyValue('--text') || '#f0ede8').trim();
+      var COLOR_TEXT_MUTED = (rootStyle.getPropertyValue('--text-muted') || '#a3a3ad').trim();
+      var COLOR_TEXT_DIM = (rootStyle.getPropertyValue('--text-dim') || '#8f8f99').trim();
+      var COLOR_TEXT_DARKER = (rootStyle.getPropertyValue('--text-darker') || '#6b6b6b').trim();
+      var COLOR_GOLD = (rootStyle.getPropertyValue('--gold') || '#c9a96e').trim();
+      var accentColor = (actor && actor.accentColor) || COLOR_GOLD;
+      return {
+        bg: COLOR_BG, bgCard: COLOR_BG_CARD, text: COLOR_TEXT, textMuted: COLOR_TEXT_MUTED,
+        textDim: COLOR_TEXT_DIM, textDarker: COLOR_TEXT_DARKER, gold: COLOR_GOLD, accent: accentColor
+      };
+    }
+
+    // Builds the share card canvas for today's chosen batch and returns a
+    // Promise<HTMLCanvasElement>. `variant` selects the layout:
+    //   'full'   — 1080x1350, full header + 3x3 grid (Phase 1, unchanged).
+    //   'teaser' — 1080x1080, compact header + 2x3 (or 2x2 fallback) grid.
     async function renderExportCanvas(payload, variant) {
       variant = variant || 'full';
+      if (variant === 'teaser') {
+        return renderTeaserExportCanvas(payload);
+      }
       if (variant !== 'full') {
-        throw new Error('Unsupported export variant: ' + variant + ' (only "full" is implemented so far)');
+        throw new Error('Unsupported export variant: ' + variant + ' (supported: "full", "teaser")');
       }
 
       var actor = payload.actor;
@@ -946,6 +998,135 @@
       return canvas;
     }
 
+    // Builds the compact 1080x1080 teaser share card: same visual language
+    // (dark bg, gold accents, rounded image tiles, brand footer) as the full
+    // card, but a trimmed header (drops the spell/subtitle lines) and a
+    // smaller 2x3 image grid (falls back to 2x2 when there are fewer than 6
+    // results, so the grid never shows empty placeholder tiles for a
+    // thin/edge-case batch).
+    async function renderTeaserExportCanvas(payload) {
+      var actor = payload.actor;
+      var vibe = payload.vibe;
+      var chosen = payload.chosen;
+      var allResults = (chosen && Array.isArray(chosen.results)) ? chosen.results : [];
+      var useSix = allResults.length >= 6;
+      var cols = useSix ? 3 : 2;
+      var rows = 2;
+      var results = allResults.slice(0, cols * rows);
+
+      await loadExportCardFonts();
+
+      var imagesPromise = Promise.all(results.map(function (r) { return loadProxiedImage(r.thumbnail); }));
+
+      var colors = readExportCardColors(actor);
+      var accentColor = colors.accent;
+
+      var canvas = document.createElement('canvas');
+      canvas.width = EXPORT_TEASER_W;
+      canvas.height = EXPORT_TEASER_H;
+      var ctx = canvas.getContext('2d');
+
+      var PAD = 56;
+      var contentW = EXPORT_TEASER_W - PAD * 2;
+
+      // Background: near-black base + a soft radial glow of the accent color
+      // behind the header, matching the full card's look.
+      ctx.fillStyle = colors.bg;
+      ctx.fillRect(0, 0, EXPORT_TEASER_W, EXPORT_TEASER_H);
+      var glow = ctx.createRadialGradient(
+        EXPORT_TEASER_W / 2, 200, 30,
+        EXPORT_TEASER_W / 2, 200, 520
+      );
+      glow.addColorStop(0, hexToRgba(accentColor, 0.16));
+      glow.addColorStop(1, hexToRgba(accentColor, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, EXPORT_TEASER_W, EXPORT_TEASER_H);
+
+      ctx.textAlign = 'center';
+      var cx = EXPORT_TEASER_W / 2;
+      var y = PAD - 12;
+
+      // 1. Series/section label
+      y += 30;
+      ctx.font = '600 22px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = colors.gold;
+      ctx.fillText('今日氛围图鉴', cx, y);
+
+      // 2. Title (slightly smaller than the full card's — this is a teaser)
+      y += 48;
+      ctx.font = '700 38px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = colors.text;
+      ctx.fillText('🔮 今日之星 · 氛围格子', cx, y);
+
+      // 3. Actor name
+      if (actor && actor.name) {
+        y += 48;
+        ctx.font = '700 34px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = accentColor;
+        ctx.fillText(actor.name, cx, y);
+      }
+
+      // 4. Vibe name (with emoji) — the teaser stops here: no spell/subtitle
+      // lines, to keep the header compact and the text block light.
+      if (vibe && vibe.label) {
+        y += 40;
+        ctx.font = '600 26px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = colors.text;
+        ctx.fillText((vibe.emoji ? vibe.emoji + ' ' : '') + vibe.label, cx, y);
+      }
+
+      // 5. Image grid (2x3 or 2x2 fallback) — reserve the same footer zone
+      // used by the full card (source line + brand signature), then fit the
+      // grid into the remaining vertical room.
+      var footerZoneH = 118;
+      var gridTop = y + 34;
+      var gridBottom = EXPORT_TEASER_H - footerZoneH;
+      var gridGap = 12;
+      var gridAvailW = contentW;
+      var gridAvailH = gridBottom - gridTop;
+      var tileSize = Math.min((gridAvailW - gridGap * (cols - 1)) / cols, (gridAvailH - gridGap * (rows - 1)) / rows);
+      tileSize = Math.max(tileSize, 40); // sanity floor, same rationale as the full card
+      var gridW = tileSize * cols + gridGap * (cols - 1);
+      var gridH = tileSize * rows + gridGap * (rows - 1);
+      var gridX = (EXPORT_TEASER_W - gridW) / 2;
+      var gridY = gridTop + Math.max(0, (gridAvailH - gridH) / 2);
+
+      var images = await imagesPromise;
+      for (var row = 0; row < rows; row++) {
+        for (var col = 0; col < cols; col++) {
+          var idx = row * cols + col;
+          var tx = gridX + col * (tileSize + gridGap);
+          var ty = gridY + row * (tileSize + gridGap);
+          var img = images[idx];
+          if (img) {
+            drawCoverImageRounded(ctx, img, tx, ty, tileSize, tileSize, 14);
+          } else {
+            drawPlaceholderTileRounded(ctx, tx, ty, tileSize, tileSize, 14, colors.bgCard);
+          }
+        }
+      }
+
+      // 6. Sources — same reduced/minimal single line as the full card.
+      var sourceNames = [];
+      results.forEach(function (r) {
+        if (r.source && sourceNames.indexOf(r.source) === -1) sourceNames.push(r.source);
+      });
+      var sourcesLineY = EXPORT_TEASER_H - footerZoneH + 36;
+      if (sourceNames.length) {
+        ctx.font = '400 17px "Inter", "Noto Sans SC", sans-serif';
+        ctx.fillStyle = colors.textDarker;
+        var sourcesText = '来源：' + sourceNames.slice(0, 5).join(' · ');
+        ctx.fillText(sourcesText, cx, sourcesLineY);
+      }
+
+      // 7. Footer/brand signature — same copy as the full card.
+      ctx.font = '600 18px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = colors.gold;
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_TEASER_H - PAD + 22);
+
+      return canvas;
+    }
+
     // Converts a hex color (#rrggbb) to an rgba() string with the given alpha.
     // Falls back to a neutral gold-ish gray if parsing fails (defensive —
     // accentColor always comes from ACTOR_PACKS data, but this keeps the glow
@@ -957,12 +1138,14 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
-    // Wires up the "📤 保存分享卡" button: builds the export canvas, then tries
-    // navigator.share() (mobile-first, so it can go straight to Weibo/WeChat/
-    // whatever share sheet) and falls back to a plain download if sharing
-    // isn't available or the user cancels.
+    // Wires up the "📤 保存分享卡" buttons: builds the export canvas for the
+    // given variant ('full' by default, or 'teaser' for the compact card),
+    // then tries navigator.share() (mobile-first, so it can go straight to
+    // Weibo/WeChat/whatever share sheet) and falls back to a plain download
+    // if sharing isn't available or the user cancels.
     var shareCardInFlight = false;
-    async function handleSaveShareCard() {
+    async function handleSaveShareCard(variant) {
+      variant = variant || 'full';
       if (shareCardInFlight) return;
       if (!dailyGridState.chosen || !dailyGridState.actor || !dailyGridState.vibe) {
         showToast('今天的图还没准备好');
@@ -976,7 +1159,7 @@
           actor: dailyGridState.actor,
           vibe: dailyGridState.vibe,
           chosen: dailyGridState.chosen
-        }, 'full');
+        }, variant);
 
         var blob = await new Promise(function (resolve) {
           canvas.toBlob(function (b) { resolve(b); }, 'image/png');
@@ -989,7 +1172,8 @@
         }
 
         var dateStr = dailyGridState.date || new Date().toISOString().slice(0, 10);
-        var fileName = 'today-vibe-' + dateStr + '.png';
+        var fileSuffix = variant === 'teaser' ? '-teaser' : '';
+        var fileName = 'today-vibe-' + dateStr + fileSuffix + '.png';
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
