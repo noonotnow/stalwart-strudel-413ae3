@@ -11,9 +11,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
+      /* Dark is the unchanged, proven default — nothing here changed by the
+         light-mode addition. body[data-theme="light"] below overrides every
+         token; if that attribute isn't set (first visit, or JS disabled),
+         the app looks exactly like it always has. */
       --bg: #0e0e12;
       --bg-card: #14141a;
       --bg-hover: #1a1a22;
+      --bg-recessed: #0e0e12;
+      --chip-bg: #1a1a26;
+      --bg-deep: #1e1e28;
+      --shimmer-highlight: #1c1c24;
       --text: #f0ede8;
       /* Readability pass: these four tiers were audited for WCAG contrast
          against the dark backgrounds above. --text-muted/--text-dim/--text-dark
@@ -25,7 +33,57 @@
       --text-dark: #7e7e7e;
       --text-darker: #6b6b6b;
       --gold: #c9a96e;
+      /* --gold-text is a separate token from --gold on purpose: --gold is used
+         as a background/border/glow color (buttons, receipts-card border,
+         badge tint) where the surface itself supplies the contrast. --gold-text
+         is for gold used AS text color directly on the page/card background —
+         in dark mode the raw gold already clears ~8.6:1 so it's identical to
+         --gold, but in light mode raw gold on cream is only ~2.1:1 (see the
+         light override below), so gold-as-text needs its own darker variant. */
+      --gold-text: #c9a96e;
       --border: #2a2a35;
+      --stale-banner: #a08050;
+      /* "Receipts card" gold border/glow tokens — tuned per-theme because the
+         same alpha reads very differently on near-black vs. cream. */
+      --receipt-border: rgba(201,169,110,0.35);
+      --receipt-border-hover: rgba(201,169,110,0.55);
+      --receipt-bg-tint: rgba(201,169,110,0.04);
+      --receipt-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3);
+      --receipt-shadow-hover: 0 8px 28px rgba(201,169,110,0.14), 0 2px 8px rgba(0,0,0,0.3);
+      --badge-bg-1: #c9a96e22;
+      --badge-bg-2: #c9a96e11;
+      --badge-border: #c9a96e44;
+    }
+    /* Light theme — a real second theme (warm cream/ivory surfaces, deep warm
+       charcoal text), not an inversion. Toggled via body[data-theme="light"],
+       set by the theme toggle in the shared header and persisted in
+       localStorage. Every text/gray tier below was contrast-checked against
+       both --bg and --bg-card the same way the dark-mode audit was done. */
+    body[data-theme="light"] {
+      --bg: #faf6ee;
+      --bg-card: #fff9f0;
+      --bg-hover: #f2e8d5;
+      --bg-recessed: #f5efe0;
+      --chip-bg: #f2e8d5;
+      --bg-deep: #f5ead2;
+      --shimmer-highlight: #f0e6d0;
+      --text: #2b2620;
+      --text-muted: #575757;
+      --text-dim: #616161;
+      --text-dark: #707070;
+      --text-darker: #868686;
+      --gold: #c9a96e;
+      --gold-text: #7b602e;
+      --border: #e6d8c5;
+      --stale-banner: #8a5a1e;
+      --receipt-border: rgba(180,140,60,0.45);
+      --receipt-border-hover: rgba(180,140,60,0.65);
+      --receipt-bg-tint: rgba(201,169,110,0.10);
+      --receipt-shadow: 0 6px 20px rgba(180,140,60,0.15), 0 2px 6px rgba(0,0,0,0.06);
+      --receipt-shadow-hover: 0 8px 24px rgba(180,140,60,0.22), 0 2px 6px rgba(0,0,0,0.08);
+      --badge-bg-1: #c9a96e33;
+      --badge-bg-2: #c9a96e1a;
+      --badge-border: #c9a96e66;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -34,6 +92,7 @@
       color: var(--text);
       min-height: 100vh;
       -webkit-font-smoothing: antialiased;
+      transition: background 0.2s, color 0.2s;
     }
     #app-wrapper {
       max-width: 480px;
@@ -46,8 +105,10 @@
     .en-helper-inline { display: none; font-size: 11px; color: var(--text-dim); font-style: italic; line-height: 1.4; }
     body.show-en .en-helper { display: block; }
     body.show-en .en-helper-inline { display: inline; }
-    #lang-toggle { background: #1a1a26; border: 1px solid #333; color: var(--text-dim); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: color 0.2s; white-space: nowrap; }
-    #lang-toggle:hover { color: #888; }
+    #lang-toggle { background: var(--chip-bg); border: 1px solid var(--border); color: var(--text-dim); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: color 0.2s; white-space: nowrap; }
+    #lang-toggle:hover { color: var(--text-muted); }
+    #theme-toggle { background: var(--chip-bg); border: 1px solid var(--border); color: var(--gold-text); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: color 0.2s, background 0.2s; white-space: nowrap; }
+    #theme-toggle:hover { background: var(--bg-hover); }
     .actor-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-radius: 14px; margin-bottom: 12px; cursor: pointer; transition: transform 0.2s, border-color 0.3s; }
     .actor-card:hover { transform: translateY(-2px); }
     .vibe-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 10px; cursor: pointer; transition: background 0.2s, border-color 0.3s; }
@@ -67,22 +128,22 @@
     .btn-platform { display: inline-block; color: white; text-decoration: none; padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; line-height: 1.2; transition: opacity 0.2s; }
     .btn-platform:hover { opacity: 0.85; }
     .btn-platform .en-helper { font-weight: 400; margin-top: 2px; color: rgba(255, 255, 255, 0.88); }
-    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e1e28; color: var(--gold); padding: 8px 18px; border-radius: 20px; font-size: 12px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 999; }
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--bg-deep); border: 1px solid var(--border); color: var(--gold-text); padding: 8px 18px; border-radius: 20px; font-size: 12px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 999; }
     .shared-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
     textarea:focus, input:focus { outline: none; }
-    .badge-random { display: inline-block; background: linear-gradient(135deg, #c9a96e22, #c9a96e11); border: 1px solid #c9a96e44; color: var(--gold); font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; }
-    .preview-block { background: linear-gradient(135deg, #14141a 0%, #101018 100%); border: 1px solid #2a2a35; border-radius: 14px; padding: 14px; margin: 18px 0 16px; }
-    .preview-title { color: var(--gold); font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .badge-random { display: inline-block; background: linear-gradient(135deg, var(--badge-bg-1), var(--badge-bg-2)); border: 1px solid var(--badge-border); color: var(--gold-text); font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; }
+    .preview-block { background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-recessed) 100%); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 18px 0 16px; }
+    .preview-title { color: var(--gold-text); font-size: 14px; font-weight: 700; margin-bottom: 4px; }
     .preview-subtitle { color: var(--text-dim); font-size: 11px; font-style: italic; margin-bottom: 12px; }
-    .preview-card { border: 1px solid #2a2a35; border-radius: 12px; padding: 12px; background: #0e0e12; }
+    .preview-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--bg-recessed); }
     .preview-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 12px; color: var(--text-dim); }
     .preview-actor, .preview-vibe { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .preview-spell { border-top: 1px solid #24242e; padding-top: 10px; }
+    .preview-spell { border-top: 1px solid var(--border); padding-top: 10px; }
     .spell-label { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
-    .spell-query { color: #c9a96e; font-family: monospace; font-size: 12px; line-height: 1.5; word-break: break-word; }
+    .spell-query { color: var(--gold-text); font-family: monospace; font-size: 12px; line-height: 1.5; word-break: break-word; }
     .preview-cta-row { display: flex; gap: 8px; margin-top: 12px; }
-    .preview-btn { flex: 1; background: #1a1a26; border: 1px solid #333; color: #888; border-radius: 20px; padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .preview-btn:hover { color: var(--gold); border-color: #c9a96e55; }
+    .preview-btn { flex: 1; background: var(--chip-bg); border: 1px solid var(--border); color: var(--text-dim); border-radius: 20px; padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .preview-btn:hover { color: var(--gold-text); border-color: var(--receipt-border-hover); }
     .preview-image-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -93,7 +154,7 @@
       cursor: pointer;
       border-radius: 8px;
       overflow: hidden;
-      background: #111018;
+      background: var(--bg-recessed);
     }
     .preview-image-card img {
       width: 100%;
@@ -117,17 +178,17 @@
     .modal-overlay.hidden { display: none; }
     .modal-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; max-width: 440px; width: 100%; margin: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
     .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-    .modal-title { color: var(--gold); font-size: 15px; font-weight: 700; }
+    .modal-title { color: var(--gold-text); font-size: 15px; font-weight: 700; }
     .modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 0 0 12px; }
     .modal-close:hover { color: var(--text-muted); }
-    .modal-star-vibe { font-size: 13px; color: #999; margin-bottom: 2px; }
+    .modal-star-vibe { font-size: 13px; color: var(--text-muted); margin-bottom: 2px; }
     .modal-subtitle { font-size: 13px; color: var(--text-muted); font-style: italic; margin-bottom: 12px; }
-    .modal-spell-row { display: flex; align-items: center; gap: 8px; background: #0e0e12; border: 1px solid #24242e; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
-    .modal-spell-text { flex: 1; color: var(--gold); font-family: monospace; font-size: 12px; word-break: break-word; }
-    .modal-spell-copy { background: none; border: 1px solid #333; color: #888; font-size: 11px; padding: 4px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
-    .modal-spell-copy:hover { color: var(--gold); border-color: #c9a96e55; }
+    .modal-spell-row { display: flex; align-items: center; gap: 8px; background: var(--bg-recessed); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+    .modal-spell-text { flex: 1; color: var(--gold-text); font-family: monospace; font-size: 12px; word-break: break-word; }
+    .modal-spell-copy { background: none; border: 1px solid var(--border); color: var(--text-dim); font-size: 11px; padding: 4px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
+    .modal-spell-copy:hover { color: var(--gold-text); border-color: var(--receipt-border-hover); }
     .modal-sources { font-size: 11px; color: var(--text-dim); margin-top: 10px; line-height: 1.6; }
-    .modal-sources .source-chip { display: inline-block; background: #1a1a26; border: 1px solid #2a2a35; border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: #888; }
+    .modal-sources .source-chip { display: inline-block; background: var(--chip-bg); border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: var(--text-dim); }
     .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
     /* Daily inline teaser: a quiet moodboard peek, not a results grid — no labels,
@@ -135,11 +196,11 @@
        full ranked modal. Desktop shows 6 images (3 cols x 2 rows), narrow shows 4
        (2 cols x 2 rows) so it never feels like a cramped 3x3. */
     .daily-card { margin: 0 auto 28px; max-width: 360px; }
-    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; padding: 10px; cursor: pointer; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); transition: border-color 0.2s, box-shadow 0.2s; }
-    .daily-inline-preview:hover { border-color: rgba(201,169,110,0.55); box-shadow: 0 8px 28px rgba(201,169,110,0.14), 0 2px 8px rgba(0,0,0,0.3); }
-    .daily-inline-cell { border-radius: 10px; overflow: hidden; background: #14141a; aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; padding: 10px; cursor: pointer; border: 1px solid var(--receipt-border); border-radius: 14px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); transition: border-color 0.2s, box-shadow 0.2s; }
+    .daily-inline-preview:hover { border-color: var(--receipt-border-hover); box-shadow: var(--receipt-shadow-hover); }
+    .daily-inline-cell { border-radius: 10px; overflow: hidden; background: var(--bg-card); aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
     .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, #14141a 8%, #1c1c24 18%, #14141a 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
+    .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, var(--bg-card) 8%, var(--shimmer-highlight) 18%, var(--bg-card) 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
     /* "Receipts card" border/glow — same warm border/tint/shadow language as the
@@ -148,7 +209,7 @@
        consistent everywhere a grid appears. Scoped by id so it never affects the
        shared .preview-image-grid class itself (no unintended cascade). Border
        wraps the whole grid, not each image, keeping the photos visually dominant. */
-    #daily-grid-image-grid, #preview-image-grid { padding: 10px; border: 1px solid rgba(201,169,110,0.35); border-radius: 14px; background: rgba(201,169,110,0.04); box-shadow: 0 6px 24px rgba(201,169,110,0.08), 0 2px 8px rgba(0,0,0,0.3); }
+    #daily-grid-image-grid, #preview-image-grid { padding: 10px; border: 1px solid var(--receipt-border); border-radius: 14px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); }
   </style>
 </head>
 <body data-id="0">
@@ -181,6 +242,61 @@
     // agree on its own date/seed for this feature.
     function toggleLang(){ state.showEN=!state.showEN; document.body.classList.toggle('show-en',state.showEN); var btn=document.getElementById('lang-toggle'); if(btn)btn.textContent=state.showEN?'隐藏英文提示':'显示英文提示'; }
     function showToast(msg){ var t=document.getElementById('toast'); if(!t)return; t.textContent=msg; t.style.opacity='1'; setTimeout(function(){t.style.opacity='0';},1800); }
+
+    // --- Theme (dark/light) ---
+    // Dark is the proven default and stays the look for first-time visitors;
+    // light is a real second theme (see the body[data-theme="light"] CSS block),
+    // not a quick inversion. Choice is persisted per-browser so it "sticks"
+    // across visits once someone opts in.
+    var THEME_KEY = 'fandom-theme';
+    function getPreferredTheme(){
+      var saved = null;
+      try { saved = localStorage.getItem(THEME_KEY); } catch(e) {}
+      return (saved === 'light') ? 'light' : 'dark';
+    }
+    function applyTheme(theme){
+      var next = theme === 'light' ? 'light' : 'dark';
+      if (next === 'light') { document.body.dataset.theme = 'light'; }
+      else { delete document.body.dataset.theme; }
+      var btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = next === 'light' ? '切换深色<span class="en-helper-inline"> · Switch to dark</span>' : '切换浅色<span class="en-helper-inline"> · Switch to light</span>';
+    }
+    function toggleTheme(){
+      var current = document.body.dataset.theme === 'light' ? 'light' : 'dark';
+      var next = current === 'light' ? 'dark' : 'light';
+      try { localStorage.setItem(THEME_KEY, next); } catch(e) {}
+      applyTheme(next);
+      // A few colors (actor accent text, gold) are computed into literal hex at
+      // render time via accentTextColor(), so they need a re-render to pick up
+      // the new theme -- everything else updates instantly via the CSS cascade.
+      render();
+    }
+    function initTheme(){ applyTheme(getPreferredTheme()); }
+
+    // Actor accent colors (and gold) are chosen to glow on the dark background.
+    // On the light theme, used as raw text they'd be washed out (~2:1 contrast) --
+    // so when a color is rendered as page-level text (not inside the always-dark
+    // per-actor card tile), we darken it via HSL while keeping hue/saturation, so
+    // it stays recognizably "that actor's color" but reads clearly on cream.
+    // In dark mode this is a no-op (the raw color already clears ~8:1+).
+    function hexToRgbArr(hex){ hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join(''); return [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)]; }
+    function rgbToHex(rgb){ return '#'+rgb.map(function(v){return Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0');}).join(''); }
+    function rgbToHslArr(r,g,b){ r/=255;g/=255;b/=255; var max=Math.max(r,g,b),min=Math.min(r,g,b),h,s,l=(max+min)/2; if(max===min){h=s=0;} else { var d=max-min; s=l>0.5?d/(2-max-min):d/(max+min); switch(max){ case r: h=(g-b)/d+(g<b?6:0); break; case g: h=(b-r)/d+2; break; case b: h=(r-g)/d+4; break; } h/=6; } return [h*360,s*100,l*100]; }
+    function hslToRgbArr(h,s,l){ h/=360;s/=100;l/=100; var r,g,b; if(s===0){ r=g=b=l; } else { var hue2rgb=function(p,q,t){ if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p; }; var q=l<0.5?l*(1+s):l+s-l*s; var p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); } return [r*255,g*255,b*255]; }
+    function relLuminance(rgb){ function ch(c){ c=c/255; return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4); } return 0.2126*ch(rgb[0])+0.7152*ch(rgb[1])+0.0722*ch(rgb[2]); }
+    function contrastRatio(rgb1,rgb2){ var l1=relLuminance(rgb1),l2=relLuminance(rgb2); var lighter=Math.max(l1,l2),darker=Math.min(l1,l2); return (lighter+0.05)/(darker+0.05); }
+    var LIGHT_BG_RGB = [255,249,240]; // #fff9f0, the lightest surface any accent text sits on
+    function accentTextColor(hex){
+      if (!hex || document.body.dataset.theme !== 'light') return hex;
+      var rgb = hexToRgbArr(hex);
+      var hsl = rgbToHslArr(rgb[0],rgb[1],rgb[2]);
+      var h = hsl[0], s = Math.min(100, hsl[1]*1.05), l = hsl[2];
+      for (var newL = l; newL >= 15; newL -= 1) {
+        var candidate = hslToRgbArr(h, s, newL);
+        if (contrastRatio(candidate, LIGHT_BG_RGB) >= 4.5) return rgbToHex(candidate);
+      }
+      return rgbToHex(hslToRgbArr(h, s, 15));
+    }
     function goHome(){ state.page='home'; state.actorIdx=null; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goActor(idx){ if(idx!==undefined)state.actorIdx=idx; state.page='actor'; state.vibeIdx=null; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; state.fromRandom=false; render(); }
     function goVibe(vIdx){ state.vibeIdx=vIdx; state.page='vibe'; state.queryIdx=0; state.customQuery=null; state.showCustom=false; state.showMJ=false; render(); }
@@ -427,11 +543,11 @@
       var h = '<div class="modal-card">';
       h += '<div class="modal-header"><div class="modal-title">🔮 今日之星 · 氛围格子<div class="en-helper" style="font-weight:400;">Today\'s Star + Vibe preview</div></div><button id="daily-grid-close" class="modal-close">✕</button></div>';
       if (actor && vibe) {
-        h += '<div class="modal-star-vibe">今日之星：<strong style="color:'+actor.accentColor+';">'+actor.name+'</strong><span class="en-helper-inline"> · Star: '+actor.shortName_en+'</span></div>';
+        h += '<div class="modal-star-vibe">今日之星：<strong style="color:'+accentTextColor(actor.accentColor)+';">'+actor.name+'</strong><span class="en-helper-inline"> · Star: '+actor.shortName_en+'</span></div>';
         h += '<div class="modal-star-vibe">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Vibe: '+vibe.label_en+'</span></div>';
         h += '<div class="modal-subtitle">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
         if (dailyGridState.stale) {
-          h += '<div style="font-size:10.5px;color:#a08050;margin:-4px 0 8px;">今日暂时没抓到新图，先看看昨天的靠谱组合<span class="en-helper-inline"> · Showing yesterday\'s cached grid — today\'s build had no acceptable batch</span></div>';
+          h += '<div style="font-size:10.5px;color:var(--stale-banner);margin:-4px 0 8px;">今日暂时没抓到新图，先看看昨天的靠谱组合<span class="en-helper-inline"> · Showing yesterday\'s cached grid — today\'s build had no acceptable batch</span></div>';
         }
       }
 
@@ -549,14 +665,14 @@
     function copyPrompt(){ var vibe=ACTOR_PACKS[state.actorIdx].vibes[state.vibeIdx]; navigator.clipboard.writeText(vibe.mjPrompt).then(function(){showToast('提示词已复制 ✓');}); }
     function copyShareText(){ var actor=ACTOR_PACKS[state.actorIdx],vibe=actor.vibes[state.vibeIdx]; var text='🖤 姐妹们看这里！！\n\n今天刷的'+actor.name+'氛围太好了，'+vibe.shareFragment+'\n\n'+vibe.emoji+' '+vibe.label+'\n'+vibe.subtitle+'\n\n#'+actor.name+'# #氛围图鉴#'; navigator.clipboard.writeText(text).then(function(){var btn=document.getElementById('share-btn');if(btn){var orig=btn.innerHTML;btn.textContent='✓ 已复制，去安利姐妹吧';setTimeout(function(){btn.innerHTML=orig;},2000);}}); }
 
-    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:var(--text-dark);letter-spacing:0.05em;">氛围图鉴</span><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英文提示')+'</button></div>'; }
+    function renderHeader(){ return '<div class="shared-header"><span style="font-size:11px;color:var(--text-dark);letter-spacing:0.05em;">氛围图鉴</span><div style="display:flex;gap:6px;align-items:center;"><button id="theme-toggle">'+(document.body.dataset.theme==='light'?'切换深色<span class="en-helper-inline"> · Switch to dark</span>':'切换浅色<span class="en-helper-inline"> · Switch to light</span>')+'</button><button id="lang-toggle">'+(state.showEN?'隐藏英文提示':'显示英文提示')+'</button></div></div>'; }
 
     function escapeAttr(str){ if(!str)return ''; return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     function renderHome(){
       var h='<div class="page">'+renderHeader();
       h+='<div style="margin-top:32px;text-align:center;">';
-      h+='<div style="font-size:22px;font-weight:700;color:#c9a96e;margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
+      h+='<div style="font-size:22px;font-weight:700;color:var(--gold-text);margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:var(--text-dim);font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
       h+='<div class="daily-card"><div id="daily-inline-preview" class="daily-inline-preview"></div>';
       h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
@@ -571,9 +687,9 @@
       var actor=ACTOR_PACKS[state.actorIdx];
       var h='<div class="page">'+renderHeader();
       h+='<button id="btn-back" class="btn-back">← 换一个<span class="en-helper-inline"> · switch actor</span></button>';
-      h+='<div style="font-size:22px;font-weight:700;color:'+actor.accentColor+';margin-bottom:4px;">'+actor.title+'<div class="en-helper">'+actor.title_en+'</div></div>';
-      h+='<div style="font-size:14px;color:#c9a96e;font-style:italic;margin-bottom:24px;">姐妹今天想看哪种'+actor.shortName+'？<div class="en-helper">Which '+actor.shortName_en+' mood are we feeling today?</div></div>';
-      for(var i=0;i<actor.vibes.length;i++){var v=actor.vibes[i];h+='<div class="vibe-card" data-vibe="'+i+'"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;"><span style="font-size:22px;">'+v.emoji+'</span><span style="font-size:15px;font-weight:600;">'+v.label+'<span class="en-helper-inline" style="font-size:11px;"> · '+v.label_en+'</span></span></div><div style="font-size:13px;color:#888;font-style:italic;">'+v.subtitle+'<div class="en-helper">'+v.subtitle_en+'</div></div></div>';}
+      h+='<div style="font-size:22px;font-weight:700;color:'+accentTextColor(actor.accentColor)+';margin-bottom:4px;">'+actor.title+'<div class="en-helper">'+actor.title_en+'</div></div>';
+      h+='<div style="font-size:14px;color:var(--gold-text);font-style:italic;margin-bottom:24px;">姐妹今天想看哪种'+actor.shortName+'？<div class="en-helper">Which '+actor.shortName_en+' mood are we feeling today?</div></div>';
+      for(var i=0;i<actor.vibes.length;i++){var v=actor.vibes[i];h+='<div class="vibe-card" data-vibe="'+i+'"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;"><span style="font-size:22px;">'+v.emoji+'</span><span style="font-size:15px;font-weight:600;">'+v.label+'<span class="en-helper-inline" style="font-size:11px;"> · '+v.label_en+'</span></span></div><div style="font-size:13px;color:var(--text-dim);font-style:italic;">'+v.subtitle+'<div class="en-helper">'+v.subtitle_en+'</div></div></div>';}
       h+='<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:24px;">三击副标题可自定义关键词 ✦<div class="en-helper">Triple-tap any vibe subtitle to enter custom search mode</div></div>';
       h+='<footer style="text-align:center;padding:20px 0 8px;"><span style="font-size:10px;color:var(--text-darker);">made by the power of friendship</span></footer>';
       h+='</div>'; return h;
@@ -589,7 +705,7 @@
         h+='<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">今日氛围：'+vibe.emoji+' '+vibe.label+'<span class="en-helper-inline"> · Today\'s vibe: '+vibe.label_en+'</span></div>';
       }
       h+='<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">'+actor.name+' · '+vibe.emoji+' '+vibe.label+'</div>';
-      h+='<div id="vibe-subtitle" style="font-size:18px;color:'+actor.accentColor+';font-weight:600;line-height:1.5;cursor:pointer;user-select:none;margin-bottom:12px;">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
+      h+='<div id="vibe-subtitle" style="font-size:18px;color:'+accentTextColor(actor.accentColor)+';font-weight:600;line-height:1.5;cursor:pointer;user-select:none;margin-bottom:12px;">'+vibe.subtitle+'<div class="en-helper">'+vibe.subtitle_en+'</div></div>';
       h+='<div id="query-display" style="font-size:13px;color:var(--text-muted);font-family:monospace;margin-bottom:6px;">🔍 '+activeQuery+(state.customQuery?' · 自定义':'')+'</div>';
       if(vibe.queries.length>1&&!state.customQuery)h+='<div style="font-size:10px;color:var(--text-dim);margin-bottom:16px;">第 '+(state.queryIdx+1)+' 批 / '+vibe.queries.length+' 批<span class="en-helper-inline"> · Batch '+(state.queryIdx+1)+' of '+vibe.queries.length+'</span></div>';
       h+='<section id="preview-section" class="preview-block">';
@@ -609,24 +725,24 @@
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
       h+='<a href="'+weiboUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#e6162d;">微博搜图<div class="en-helper">Search Weibo</div></a>';
       h+='<a href="'+baiduImageUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#2932e1;">百度图片<div class="en-helper">Baidu Images</div></a>';
-      h+='<a href="'+googleUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#1a1a26;border:1px solid #333;">Google 图片<div class="en-helper">Google Images</div></a>';
+      h+='<a href="'+googleUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:var(--chip-bg);border:1px solid var(--border);">Google 图片<div class="en-helper">Google Images</div></a>';
       h+='<a href="'+pinterestUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#e60023;">Pinterest</a>';
       h+='<a href="'+tumblrUrl(activeQuery)+'" target="_blank" rel="noopener noreferrer" class="btn-platform platform-link" style="background:#36465d;">Tumblr</a>';
-      h+='<button id="btn-copy-query" class="btn-platform" style="background:#1e1e28;border:1px solid #2a2a35;color:#888;">复制搜索词<div class="en-helper">Copy search phrase</div></button>';
+      h+='<button id="btn-copy-query" class="btn-platform" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--text-dim);">复制搜索词<div class="en-helper">Copy search phrase</div></button>';
       h+='</div>';
       var refreshLabel=state.customQuery?'切回系统关键词':'🔄 换一批',refreshEN=state.customQuery?'Return to preset keywords':'Try another batch';
       h+='<button id="refresh-btn" class="btn-secondary" style="width:100%;margin-bottom:20px;">'+refreshLabel+'<div class="en-helper">'+refreshEN+'</div></button>';
-      h+='<div id="advanced-section" style="display:'+(state.showCustom?'block':'none')+';background:#0a0a12;border:1px solid #2a2a35;border-radius:8px;padding:14px;margin-bottom:20px;">';
-      h+='<div style="font-size:12px;color:#c9a96e;margin-bottom:8px;">自定义关键词 ✦ 高级模式<div class="en-helper">Custom keywords · advanced mode</div></div>';
-      h+='<input id="custom-input" type="text" value="'+escapeAttr(state.customQuery||activeQuery)+'" placeholder="输入你的搜图关键词" style="width:100%;background:#14141a;color:#f0ede8;border:1px solid #2a2a35;border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:6px;box-sizing:border-box;" />';
+      h+='<div id="advanced-section" style="display:'+(state.showCustom?'block':'none')+';background:var(--bg-recessed);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:20px;">';
+      h+='<div style="font-size:12px;color:var(--gold-text);margin-bottom:8px;">自定义关键词 ✦ 高级模式<div class="en-helper">Custom keywords · advanced mode</div></div>';
+      h+='<input id="custom-input" type="text" value="'+escapeAttr(state.customQuery||activeQuery)+'" placeholder="输入你的搜图关键词" style="width:100%;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:6px;box-sizing:border-box;" />';
       h+='<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">修改后点任意搜图按钮生效<div class="en-helper">Your phrase goes live when you tap any search button above</div></div>';
       h+='<button id="btn-clear-custom" style="background:transparent;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;padding:0;">✕ 关闭并清除<span class="en-helper-inline"> · Close &amp; clear</span></button>';
       h+='</div>';
       if(vibe.mjPrompt){
-        h+='<div style="border:1px solid #2a2a35;border-radius:8px;overflow:hidden;margin-bottom:20px;">';
-        h+='<button id="btn-mj-toggle" style="width:100%;background:#14141a;color:#c9a96e;font-size:13px;padding:12px 16px;border:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;"><span>✨ Midjourney 出图提示词<span class="en-helper-inline" style="font-size:10px;color:var(--text-dim);"> · prompt</span></span><span id="mj-arrow">'+(state.showMJ?'▲':'▼')+'</span></button>';
-        h+='<div id="mj-content" style="display:'+(state.showMJ?'block':'none')+';background:#0e0e12;padding:14px;">';
-        h+='<textarea readonly style="width:100%;background:#14141a;color:#c9a96e;border:1px solid #2a2a35;border-radius:6px;padding:10px;font-size:11.5px;font-family:monospace;line-height:1.6;resize:none;box-sizing:border-box;min-height:100px;">'+vibe.mjPrompt+'</textarea>';
+        h+='<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;">';
+        h+='<button id="btn-mj-toggle" style="width:100%;background:var(--bg-card);color:var(--gold-text);font-size:13px;padding:12px 16px;border:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;"><span>✨ Midjourney 出图提示词<span class="en-helper-inline" style="font-size:10px;color:var(--text-dim);"> · prompt</span></span><span id="mj-arrow">'+(state.showMJ?'▲':'▼')+'</span></button>';
+        h+='<div id="mj-content" style="display:'+(state.showMJ?'block':'none')+';background:var(--bg-recessed);padding:14px;">';
+        h+='<textarea readonly style="width:100%;background:var(--bg-card);color:var(--gold-text);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11.5px;font-family:monospace;line-height:1.6;resize:none;box-sizing:border-box;min-height:100px;">'+vibe.mjPrompt+'</textarea>';
         h+='<div style="display:flex;gap:8px;margin-top:10px;"><button id="btn-copy-prompt" class="btn-primary" style="flex:1;font-size:13px;">复制提示词<span class="en-helper-inline"> · Copy prompt</span></button><a href="https://www.midjourney.com/imagine" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="flex:1;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;">打开 Midjourney ↗</a></div>';
         h+='</div></div>';
       }
@@ -640,6 +756,7 @@
 
     function bindEvents(){
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
+      var themeBtn=document.getElementById('theme-toggle'); if(themeBtn)themeBtn.addEventListener('click',toggleTheme);
       if(state.page==='home'){
         var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
         var dip=document.getElementById('daily-inline-preview'); if(dip)dip.addEventListener('click',openDailyGridModal);
@@ -676,6 +793,7 @@
     // script only ever runs after this resolves, since render()/user interaction
     // can't happen until then.
     (async function boot(){
+      initTheme();
       try {
         var resp = await fetch('/.netlify/functions/actor-packs');
         ACTOR_PACKS = await resp.json();
