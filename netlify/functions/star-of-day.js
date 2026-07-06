@@ -170,7 +170,12 @@ export default async (req, context) => {
       rankedBatches: []
     });
   } catch (err) {
-    return jsonResponse(500, { error: err.message || "Unknown error", rankedBatches: [] });
+    return jsonResponse(500, {
+      error: err.message || "Unknown error",
+      errName: err.name,
+      errStack: (err.stack || "").split("\n").slice(0, 6),
+      rankedBatches: []
+    });
   }
 };
 
