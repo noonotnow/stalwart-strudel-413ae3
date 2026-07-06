@@ -1,29 +1,22 @@
 import { getStore } from "@netlify/blobs";
 
-// Wrapper around @netlify/blobs' getStore() that falls back to manual
-// siteID/token configuration when the automatic `NETLIFY_BLOBS_CONTEXT`
-// environment variable isn't injected by the runtime.
+// Wrapper that opens a Netlify Blobs store, preferring the automatic
+// V2-function context (`context.blobs`) which Netlify reliably injects with
+// live site/token credentials.
 //
-// Observed on this project's deploy previews (and possibly production): the
-// function runtime provides `SITE_ID` and `NETLIFY_FUNCTIONS_TOKEN` but not
-// `NETLIFY_BLOBS_CONTEXT`, which makes the zero-arg `getStore(name)` throw
-// "The environment has not been configured to use Netlify Blobs." Passing
-// `siteID`/`token` explicitly (per the @netlify/blobs manual-configuration
-// docs) works around this without depending on that env var.
-export function getBlobStore(name) {
-  if (process.env.NETLIFY_BLOBS_CONTEXT) {
-    // Automatic context is present — let the SDK use it as intended.
-    return getStore(name);
+// Background: classic (V1, `exports.handler(event, context)`) Netlify
+// Functions do NOT get automatic Blobs credentials — confirmed via a deploy-
+// preview diagnostic showing no `NETLIFY_BLOBS_CONTEXT` env var, only
+// `SITE_ID` + `NETLIFY_FUNCTIONS_TOKEN` (the latter is NOT a valid Blobs
+// token — using it manually returned a 401 from the Blobs API). V2 functions
+// (`export default async (req, context) => {}`) get `context.blobs` injected
+// automatically per Netlify's docs, so star-of-day.js uses the V2 signature
+// and this helper prefers `context.blobs.getStore(name)` when available,
+// falling back to the zero-config `getStore(name)` (which reads
+// `NETLIFY_BLOBS_CONTEXT` if some future runtime provides it) otherwise.
+export function getBlobStore(name, context) {
+  if (context && context.blobs && typeof context.blobs.getStore === "function") {
+    return context.blobs.getStore(name);
   }
-
-  const siteID = process.env.SITE_ID || process.env.NETLIFY_SITE_ID;
-  const token = process.env.NETLIFY_FUNCTIONS_TOKEN || process.env.NETLIFY_TOKEN;
-
-  if (siteID && token) {
-    return getStore({ name, siteID, token });
-  }
-
-  // Neither automatic context nor the manual fallback env vars are
-  // available — let the SDK throw its normal descriptive error.
   return getStore(name);
 }

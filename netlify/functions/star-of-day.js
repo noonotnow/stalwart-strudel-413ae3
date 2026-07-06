@@ -111,13 +111,13 @@ async function releaseLock(store, dateString) {
   }
 }
 
-export async function handler(event) {
-  if (event.httpMethod && event.httpMethod !== "GET") {
+export default async (req, context) => {
+  if (req.method && req.method !== "GET") {
     return jsonResponse(405, { error: "Method not allowed" });
   }
 
   try {
-    const store = getBlobStore(STORE_NAME);
+    const store = getBlobStore(STORE_NAME, context);
     const todayStr = getShanghaiDateString();
     const todayKey = cacheKeyFor(todayStr);
 
@@ -172,7 +172,7 @@ export async function handler(event) {
   } catch (err) {
     return jsonResponse(500, { error: err.message || "Unknown error", rankedBatches: [] });
   }
-}
+};
 
 async function pollForCache(store, todayKey) {
   const deadline = Date.now() + POLL_MAX_WAIT_MS;
@@ -198,12 +198,11 @@ async function tryYesterdayFallback(store, todayStr) {
 }
 
 function jsonResponse(statusCode, body) {
-  return {
-    statusCode,
+  return new Response(JSON.stringify(body), {
+    status: statusCode,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store"
-    },
-    body: JSON.stringify(body)
-  };
+    }
+  });
 }
