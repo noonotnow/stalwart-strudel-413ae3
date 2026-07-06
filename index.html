@@ -147,7 +147,7 @@
   <script>
     // ACTOR_PACKS is now fetched from /.netlify/functions/actor-packs (see boot() at
     // the bottom of this script) instead of being a literal array here. That endpoint
-    // reads from netlify/functions/lib/actor-packs.mjs — the single source of truth
+    // reads from netlify/functions/lib/actor-packs.js — the single source of truth
     // also used in-process by the server-side star-of-day cache builder, so the
     // browser and the daily-grid server function always see identical actor/vibe
     // data instead of two hand-maintained copies drifting apart.
@@ -164,7 +164,7 @@
     // getShanghaiDateString/hashDateString/getTodaysRandom used to live here so the
     // browser could compute "today's" actor/vibe pick itself. That logic (and the
     // Asia/Shanghai day boundary) now lives server-side in
-    // netlify/functions/lib/date-seed.mjs — the server is the single source of truth
+    // netlify/functions/lib/date-seed.js — the server is the single source of truth
     // for "today", returned directly in the /.netlify/functions/star-of-day payload
     // (see ensureDailyGridLoaded below), so the browser never needs to compute or
     // agree on its own date/seed for this feature.
@@ -285,7 +285,7 @@
     // client just fetches that one precomputed payload — the ranked-batch selection
     // logic (subject-correctness hard filter, junk-domain filtering, highest-count-
     // wins with a close-range random tie-break) that used to run in every browser
-    // now lives in netlify/functions/lib/ranking.mjs. See that file for the full
+    // now lives in netlify/functions/lib/ranking.js. See that file for the full
     // priority-order writeup; nothing about the ranking rules themselves changed —
     // only where they run.
 

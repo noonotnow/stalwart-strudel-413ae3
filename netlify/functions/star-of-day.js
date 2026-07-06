@@ -1,8 +1,8 @@
 import { getStore } from "@netlify/blobs";
-import { ACTOR_PACKS as actorPacks } from "./lib/actor-packs.mjs";
+import { ACTOR_PACKS as actorPacks } from "./lib/actor-packs.js";
 import { searchOneQuery } from "./preview-search.js";
-import { evaluateCandidates, rankCandidates, RANKED_BATCH_LIMIT } from "./lib/ranking.mjs";
-import { getShanghaiDateString, getRandomForDate, shanghaiYesterday } from "./lib/date-seed.mjs";
+import { evaluateCandidates, rankCandidates, RANKED_BATCH_LIMIT } from "./lib/ranking.js";
+import { getShanghaiDateString, getRandomForDate, shanghaiYesterday } from "./lib/date-seed.js";
 
 // Server-side daily cache for "Star of the Day".
 //
