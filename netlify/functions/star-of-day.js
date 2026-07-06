@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { getBlobStore } from "./lib/blob-store.js";
 import { ACTOR_PACKS as actorPacks } from "./lib/actor-packs.js";
 import { searchOneQuery } from "./preview-search.js";
 import { evaluateCandidates, rankCandidates, RANKED_BATCH_LIMIT } from "./lib/ranking.js";
@@ -116,24 +116,8 @@ export async function handler(event) {
     return jsonResponse(405, { error: "Method not allowed" });
   }
 
-  // TEMP DIAGNOSTIC: report which Blobs-relevant env vars are present (booleans
-  // only, never values) so we can tell why automatic getStore() context is
-  // missing. Remove once the root cause is confirmed and fixed.
-  if (event.queryStringParameters && event.queryStringParameters.debugEnv === "1") {
-    const keys = Object.keys(process.env);
-    return jsonResponse(200, {
-      hasNetlifyBlobsContext: keys.includes("NETLIFY_BLOBS_CONTEXT"),
-      hasSiteId: keys.includes("SITE_ID"),
-      hasNetlifySiteId: keys.includes("NETLIFY_SITE_ID"),
-      hasDeployId: keys.includes("DEPLOY_ID"),
-      hasContext: keys.includes("CONTEXT"),
-      contextValue: process.env.CONTEXT || null,
-      netlifyRelatedKeys: keys.filter((k) => k.toUpperCase().includes("NETLIFY") || k.toUpperCase().includes("BLOB") || k === "SITE_ID" || k === "DEPLOY_ID"),
-    });
-  }
-
   try {
-    const store = getStore(STORE_NAME);
+    const store = getBlobStore(STORE_NAME);
     const todayStr = getShanghaiDateString();
     const todayKey = cacheKeyFor(todayStr);
 
