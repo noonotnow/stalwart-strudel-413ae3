@@ -54,6 +54,12 @@
     .vibe-card:hover { background: var(--bg-hover); }
     .btn-primary { background: var(--gold); color: #0e0e12; border: none; padding: 12px 28px; border-radius: 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; display: inline-block; text-align: center; }
     .btn-primary:hover { opacity: 0.88; }
+    /* The main button label (#0e0e12 on gold) is already ~8.6:1 contrast and fine.
+       But the nested English subtitle was inheriting --text-dim (a gray meant for
+       dark backgrounds), which is only ~1.4:1 against gold -- nearly invisible.
+       Override to a dark, semi-transparent version of the button-text color so it
+       stays visually secondary but reads clearly (~5:1) on the gold surface. */
+    .btn-primary .en-helper, .btn-primary .en-helper-inline { color: rgba(14, 14, 18, 0.72); }
     .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); padding: 12px 20px; border-radius: 24px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; display: inline-block; text-align: center; }
     .btn-secondary:hover { background: var(--bg-hover); }
     .btn-back { background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; padding: 0; margin-bottom: 20px; transition: color 0.2s; }
