@@ -191,28 +191,26 @@
     .modal-sources .source-chip { display: inline-block; background: var(--chip-bg); border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: var(--text-dim); }
     .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
-    /* Daily inline teaser: a quiet moodboard peek, not a results grid — no labels,
-       no badges, just images. Clicking any cell (or the summon button) opens the
-       full ranked modal. Desktop shows 6 images (3 cols x 2 rows), narrow shows 4
-       (2 cols x 2 rows) so it never feels like a cramped 3x3. */
+    /* Daily teaser card: a real, self-contained shareable object shown inline
+       right where the "summon" ritual happens — its own header (actor/vibe),
+       a quiet 6-image (desktop) / 4-image (narrow, via CSS) moodboard peek (no
+       labels/badges), and its own two actions: share the teaser export, or
+       explicitly open the full ranked grid modal. No click-through-anywhere —
+       both actions are deliberate buttons, not an implicit tap target. */
     .daily-card { margin: 0 auto 28px; max-width: 360px; }
-    .daily-inline-wrap { position: relative; }
-    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; padding: 10px; cursor: pointer; border: 1px solid var(--receipt-border); border-radius: 14px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); transition: border-color 0.2s, box-shadow 0.2s; }
-    .daily-inline-preview:hover { border-color: var(--receipt-border-hover); box-shadow: var(--receipt-shadow-hover); }
+    .teaser-card { padding: 14px; border: 1px solid var(--receipt-border); border-radius: 16px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); }
+    .teaser-card-header { text-align: center; margin-bottom: 10px; }
+    .teaser-card-header .teaser-card-series { font-size: 10.5px; letter-spacing: 0.05em; color: var(--gold-text); margin-bottom: 4px; }
+    .teaser-card-header .teaser-card-actor { font-size: 15px; font-weight: 700; }
+    .teaser-card-header .teaser-card-vibe { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
     .daily-inline-cell { border-radius: 10px; overflow: hidden; background: var(--bg-card); aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
     .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, var(--bg-card) 8%, var(--shimmer-highlight) 18%, var(--bg-card) 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
-    /* Share icon overlaid on the inline teaser preview's corner. Sits as a
-       sibling of #daily-inline-preview (not a descendant), so its click never
-       bubbles into the preview's own click-through-to-modal handler. Exports
-       the compact 'teaser' variant — "whatever surface you're looking at is
-       the artifact you get" is the whole point, so this never opens a size
-       picker. */
-    .daily-inline-share-btn { position: absolute; top: 18px; right: 18px; z-index: 2; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--receipt-border); background: var(--bg-card); color: var(--text); font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: transform 0.15s, box-shadow 0.15s; }
-    .daily-inline-share-btn:hover { transform: scale(1.08); box-shadow: 0 3px 12px rgba(0,0,0,0.4); }
-    .daily-inline-share-btn:active { transform: scale(0.96); }
+    .teaser-card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .teaser-card-actions .btn-secondary, .teaser-card-actions .btn-primary { flex: 1; min-width: 110px; font-size: 12.5px; padding: 10px 12px; }
     /* "Receipts card" border/glow — same warm border/tint/shadow language as the
        homepage inline teaser, applied to both grid containers that show full
        result sets (daily modal + vibe page's full grid) so the treatment is
@@ -541,34 +539,48 @@
     }
 
 
-    // Homepage teaser: a quiet 6-image (desktop) / 4-image (narrow, via CSS) peek at
-    // rank #1, no captions/badges/text. Only touches its own container so it never
-    // fights with the rest of the homepage render. Clicking any cell opens the full
-    // modal, same as the summon button.
+    // Homepage teaser: a real, self-contained shareable "card" object shown
+    // right where the summon ritual happens — its own header (actor/vibe), a
+    // quiet 6-image (desktop) / 4-image (narrow, via CSS) moodboard peek (no
+    // captions/badges), and its own two actions (share the teaser, or
+    // explicitly open the full ranked modal). No implicit click-through —
+    // both actions are deliberate buttons rendered in teaser-card-actions.
     function renderInlineDailyPreview(){
-      var el = document.getElementById('daily-inline-preview');
-      if (!el) return;
-      var shareBtn = document.getElementById('daily-inline-share');
+      var headerEl = document.getElementById('daily-teaser-header');
+      var gridEl = document.getElementById('daily-inline-preview');
+      var actionsEl = document.getElementById('daily-teaser-actions');
+      if (!gridEl) return;
 
       if (dailyGridState.loading || (!dailyGridState.chosen && !dailyGridState.empty)) {
         var skeleton = '';
         for (var i = 0; i < 6; i++) skeleton += '<div class="daily-inline-cell is-skeleton"></div>';
-        el.innerHTML = skeleton;
-        if (shareBtn) shareBtn.style.display = 'none';
+        gridEl.innerHTML = skeleton;
+        if (headerEl) headerEl.innerHTML = '';
+        if (actionsEl) actionsEl.style.display = 'none';
         return;
       }
 
       if (dailyGridState.empty || !dailyGridState.chosen) {
-        el.innerHTML = '';
-        if (shareBtn) shareBtn.style.display = 'none';
+        gridEl.innerHTML = '';
+        if (headerEl) headerEl.innerHTML = '';
+        if (actionsEl) actionsEl.style.display = 'none';
         return;
       }
 
+      var actor = dailyGridState.actor;
+      var vibe = dailyGridState.vibe;
+      if (headerEl) {
+        var headerHtml = '<div class="teaser-card-series">今日氛围图鉴</div>';
+        if (actor && actor.name) headerHtml += '<div class="teaser-card-actor" style="color:'+accentTextColor(actor.accentColor)+';">'+actor.name+'</div>';
+        if (vibe && vibe.label) headerHtml += '<div class="teaser-card-vibe">'+(vibe.emoji ? vibe.emoji + ' ' : '')+vibe.label+'</div>';
+        headerEl.innerHTML = headerHtml;
+      }
+
       var results = dailyGridState.chosen.results.slice(0, 6);
-      el.innerHTML = results.map(function(item){
+      gridEl.innerHTML = results.map(function(item){
         return '<div class="daily-inline-cell"><img src="'+escapeAttr(item.thumbnail)+'" alt="" loading="lazy" referrerpolicy="no-referrer"></div>';
       }).join('');
-      if (shareBtn) shareBtn.style.display = '';
+      if (actionsEl) actionsEl.style.display = '';
     }
 
     function openDailyGridModal(){
@@ -1277,8 +1289,14 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:var(--gold-text);margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:var(--text-dim);font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<div class="daily-card"><div class="daily-inline-wrap"><div id="daily-inline-preview" class="daily-inline-preview"></div><button id="daily-inline-share" class="daily-inline-share-btn" title="分享今日氛围卡" aria-label="分享今日氛围卡">📤</button></div>';
-      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
+      h+='<div class="daily-card"><div id="daily-teaser-card" class="teaser-card">';
+      h+='<div id="daily-teaser-header" class="teaser-card-header"></div>';
+      h+='<div id="daily-inline-preview" class="daily-inline-preview"></div>';
+      h+='<div id="daily-teaser-actions" class="teaser-card-actions">';
+      h+='<button id="daily-teaser-share" class="btn-secondary">📤 分享今日氛围卡<div class="en-helper" style="font-weight:400;">Share teaser</div></button>';
+      h+='<button id="daily-teaser-open-full" class="btn-primary">打开完整版<div class="en-helper" style="font-weight:400;">Open full version</div></button>';
+      h+='</div>';
+      h+='</div></div>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];var cs=actorCardStyle(a);h+='<div class="actor-card" data-actor="'+i+'" style="background:'+cs.background+';border:'+cs.border+';box-shadow:'+cs.boxShadow+';"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+cs.textColor+';">'+a.name+'</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:var(--text-dark);font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:var(--text-darker);font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -1361,9 +1379,8 @@
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       var themeBtn=document.getElementById('theme-toggle'); if(themeBtn)themeBtn.addEventListener('click',toggleTheme);
       if(state.page==='home'){
-        var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
-        var dip=document.getElementById('daily-inline-preview'); if(dip)dip.addEventListener('click',openDailyGridModal);
-        var dis=document.getElementById('daily-inline-share'); if(dis)dis.addEventListener('click',function(e){ e.stopPropagation(); handleSaveShareCard('teaser'); });
+        var dts=document.getElementById('daily-teaser-share'); if(dts)dts.addEventListener('click',function(){ handleSaveShareCard('teaser'); });
+        var dtf=document.getElementById('daily-teaser-open-full'); if(dtf)dtf.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
       if(state.page==='actor'){
