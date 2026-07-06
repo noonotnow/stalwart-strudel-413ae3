@@ -14,11 +14,13 @@ import { getShanghaiDateString, getRandomForDate, shanghaiYesterday } from "./li
 // generation-logic version: bump it (v2, v3, ...) if the shape of what's stored
 // changes, so old-format entries are never read back as if they were current.
 //
-// Concurrency: a short-lived lock key (`<cacheKey>:lock`) is written with
-// `onlyIfNew: true` before doing the expensive work. Only the request that wins
-// the lock computes; everyone else briefly polls the real cache key and reads
-// whatever the winner produced. This is what stops simultaneous requests right
-// after midnight from each independently re-running the whole search+rank ladder.
+// Concurrency: a short-lived lock key (`<cacheKey>:lock`) is written before
+// doing the expensive work (see tryAcquireLock() for why this is a best-effort
+// read-then-write check rather than a strict atomic compare-and-swap). Only
+// the request that wins the lock computes; everyone else briefly polls the
+// real cache key and reads whatever the winner produced. This is what stops
+// simultaneous requests right after midnight from each independently
+// re-running the whole search+rank ladder.
 const VERSION = "v1";
 const STORE_NAME = "star-of-day";
 const LOCK_TTL_MS = 25000; // a stale/abandoned lock is ignored after this long
@@ -83,24 +85,35 @@ async function buildPayloadForDate(dateString) {
 // Attempts to acquire the build lock for a date. Returns true if this request
 // now owns it (and must build + save), false if someone else already holds it
 // (or held it recently enough that it's not considered stale).
+//
+// NOTE: this is intentionally NOT a strictly atomic compare-and-swap. We
+// originally used `setJSON(key, value, { onlyIfNew: true })` and checked the
+// returned `{ modified }` flag (per @netlify/blobs' documented API), but the
+// Blobs store instance obtained via the V2 function `context.blobs` on this
+// project's deploy previews does not return that result object at all
+// (`result` came back `undefined`, unlike the documented behavior for the
+// standalone `getStore()` API). Rather than depend on unconfirmed atomic
+// semantics, this uses a plain read-then-write check instead. Worst case
+// under true simultaneous first-of-the-day requests, two requests could both
+// think they won the lock and both run the (idempotent, harmless) build —
+// whichever writes the real cache key last simply "wins", and everyone else
+// still reads a valid cached result. This is a deliberate, documented
+// trade-off: correctness of the cached data is unaffected, only the
+// "at most once" guarantee becomes "usually once, rarely twice".
 async function tryAcquireLock(store, dateString) {
   const lockKey = lockKeyFor(dateString);
-  const result = await store.setJSON(lockKey, { startedAt: Date.now() }, { onlyIfNew: true });
-  if (result.modified) return true;
-
-  // Someone else holds the lock — check whether it's stale (e.g. the request
-  // that took it crashed/timed out without ever writing the real cache key).
   try {
     const existing = await store.get(lockKey, { type: "json" });
-    if (existing && Date.now() - existing.startedAt > LOCK_TTL_MS) {
-      // Stale lock — take it over.
-      await store.setJSON(lockKey, { startedAt: Date.now() });
-      return true;
+    if (existing && Date.now() - existing.startedAt <= LOCK_TTL_MS) {
+      // Someone else holds a fresh-enough lock — let them build.
+      return false;
     }
   } catch (e) {
-    // If we can't even read the lock, be conservative and assume someone else owns it.
+    // If we can't read the lock, proceed optimistically and try to take it.
   }
-  return false;
+
+  await store.setJSON(lockKey, { startedAt: Date.now() });
+  return true;
 }
 
 async function releaseLock(store, dateString) {
@@ -170,12 +183,7 @@ export default async (req, context) => {
       rankedBatches: []
     });
   } catch (err) {
-    return jsonResponse(500, {
-      error: err.message || "Unknown error",
-      errName: err.name,
-      errStack: (err.stack || "").split("\n").slice(0, 6),
-      rankedBatches: []
-    });
+    return jsonResponse(500, { error: err.message || "Unknown error", rankedBatches: [] });
   }
 };
 
