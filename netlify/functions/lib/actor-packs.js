@@ -236,13 +236,12 @@ export const ACTOR_PACKS = [
         "subtitle": "诊断结果是美貌，预后很差",
         "subtitle_en": "The diagnosis was beauty, and the prognosis was poor",
         "queries": [
-          "张凌赫 甜甜的陷阱",
-          "张凌赫 何苏叶",
-          "张凌赫 医生 甜甜的陷阱",
-          "张凌赫 甜甜的陷阱 剧照",
-          "张凌赫 现代 医生",
-          "张凌赫 医生 氛围",
-          "张凌赫 美图 高清"
+          "张凌赫 爱你 何苏叶",
+          "张凌赫 爱你 剧照",
+          "张凌赫 何苏叶 医生",
+          "张凌赫 爱你 医生 帅",
+          "张凌赫 爱你 中医",
+          "张凌赫 白大褂 医生"
         ],
         "shareFragment": "凌赫当医生，诊断结果：美貌加重，预后不良",
         "mjPrompt": ""
