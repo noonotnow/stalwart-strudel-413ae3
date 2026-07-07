@@ -197,18 +197,26 @@
     .modal-sources .source-chip { display: inline-block; background: var(--chip-bg); border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; margin: 2px 3px 0 0; font-size: 10.5px; color: var(--text-dim); }
     .modal-cta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .modal-cta-row .btn-secondary, .modal-cta-row .btn-primary { flex: 1; min-width: 100px; font-size: 12px; padding: 10px 12px; }
-    /* Daily inline teaser: a quiet moodboard peek, not a results grid — no labels,
-       no badges, just images. Clicking any cell (or the summon button) opens the
-       full ranked modal. Desktop shows 6 images (3 cols x 2 rows), narrow shows 4
-       (2 cols x 2 rows) so it never feels like a cramped 3x3. */
+    /* Daily teaser card: a real, self-contained shareable object shown inline
+       right where the "summon" ritual happens — its own header (actor/vibe),
+       a quiet 6-image (desktop) / 4-image (narrow, via CSS) moodboard peek (no
+       labels/badges), and its own two actions: share the teaser export, or
+       explicitly open the full ranked grid modal. No click-through-anywhere —
+       both actions are deliberate buttons, not an implicit tap target. */
     .daily-card { margin: 0 auto 28px; max-width: 360px; }
-    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; padding: 10px; cursor: pointer; border: 1px solid var(--receipt-border); border-radius: 14px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); transition: border-color 0.2s, box-shadow 0.2s; }
-    .daily-inline-preview:hover { border-color: var(--receipt-border-hover); box-shadow: var(--receipt-shadow-hover); }
+    .teaser-card { padding: 14px; border: 1px solid var(--receipt-border); border-radius: 16px; background: var(--receipt-bg-tint); box-shadow: var(--receipt-shadow); }
+    .teaser-card-header { text-align: center; margin-bottom: 10px; }
+    .teaser-card-header .teaser-card-series { font-size: 10.5px; letter-spacing: 0.05em; color: var(--gold-text); margin-bottom: 4px; }
+    .teaser-card-header .teaser-card-actor { font-size: 15px; font-weight: 700; }
+    .teaser-card-header .teaser-card-vibe { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+    .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
     .daily-inline-cell { border-radius: 10px; overflow: hidden; background: var(--bg-card); aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
     .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; display: block; }
     .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, var(--bg-card) 8%, var(--shimmer-highlight) 18%, var(--bg-card) 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
+    .teaser-card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .teaser-card-actions .btn-secondary, .teaser-card-actions .btn-primary { flex: 1; min-width: 110px; font-size: 12.5px; padding: 10px 12px; }
     /* "Receipts card" border/glow — same warm border/tint/shadow language as the
        homepage inline teaser, applied to both grid containers that show full
        result sets (daily modal + vibe page's full grid) so the treatment is
@@ -425,6 +433,14 @@
       }
     }
 
+    // Shared export state for the general actor/vibe browsing flow (renderVibePage()),
+    // mirroring the shape handleSaveShareCard()/renderExportCanvas() already expect from
+    // dailyGridState ({ actor, vibe, chosen: { query, results } }) — this is what lets the
+    // "share card" button on the vibe page build an export payload without a daily-star
+    // ranked batch. Populated once a preview fetch actually succeeds; cleared on failure
+    // so the share button's guard (missing actor/vibe/chosen) kicks in correctly.
+    var previewExportState = { actor: null, vibe: null, chosen: null };
+
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
       const gridEl = document.getElementById("preview-image-grid");
@@ -449,9 +465,17 @@
             ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map((s) => '<span class="source-chip">' + s + '</span>').join('')
             : '';
         }
+        var previewActor = ACTOR_PACKS && ACTOR_PACKS[state.actorIdx];
+        var previewVibe = previewActor && previewActor.vibes[state.vibeIdx];
+        if (previewActor && previewVibe) {
+          previewExportState.actor = previewActor;
+          previewExportState.vibe = previewVibe;
+          previewExportState.chosen = { query: query, results: results };
+        }
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
+        previewExportState.chosen = null;
       }
     }
 
@@ -537,30 +561,48 @@
     }
 
 
-    // Homepage teaser: a quiet 6-image (desktop) / 4-image (narrow, via CSS) peek at
-    // rank #1, no captions/badges/text. Only touches its own container so it never
-    // fights with the rest of the homepage render. Clicking any cell opens the full
-    // modal, same as the summon button.
+    // Homepage teaser: a real, self-contained shareable "card" object shown
+    // right where the summon ritual happens — its own header (actor/vibe), a
+    // quiet 6-image (desktop) / 4-image (narrow, via CSS) moodboard peek (no
+    // captions/badges), and its own two actions (share the teaser, or
+    // explicitly open the full ranked modal). No implicit click-through —
+    // both actions are deliberate buttons rendered in teaser-card-actions.
     function renderInlineDailyPreview(){
-      var el = document.getElementById('daily-inline-preview');
-      if (!el) return;
+      var headerEl = document.getElementById('daily-teaser-header');
+      var gridEl = document.getElementById('daily-inline-preview');
+      var actionsEl = document.getElementById('daily-teaser-actions');
+      if (!gridEl) return;
 
       if (dailyGridState.loading || (!dailyGridState.chosen && !dailyGridState.empty)) {
         var skeleton = '';
         for (var i = 0; i < 6; i++) skeleton += '<div class="daily-inline-cell is-skeleton"></div>';
-        el.innerHTML = skeleton;
+        gridEl.innerHTML = skeleton;
+        if (headerEl) headerEl.innerHTML = '';
+        if (actionsEl) actionsEl.style.display = 'none';
         return;
       }
 
       if (dailyGridState.empty || !dailyGridState.chosen) {
-        el.innerHTML = '';
+        gridEl.innerHTML = '';
+        if (headerEl) headerEl.innerHTML = '';
+        if (actionsEl) actionsEl.style.display = 'none';
         return;
       }
 
+      var actor = dailyGridState.actor;
+      var vibe = dailyGridState.vibe;
+      if (headerEl) {
+        var headerHtml = '<div class="teaser-card-series">今日氛围图鉴</div>';
+        if (actor && actor.name) headerHtml += '<div class="teaser-card-actor" style="color:'+accentTextColor(actor.accentColor)+';">'+actor.name+'</div>';
+        if (vibe && vibe.label) headerHtml += '<div class="teaser-card-vibe">'+(vibe.emoji ? vibe.emoji + ' ' : '')+vibe.label+'</div>';
+        headerEl.innerHTML = headerHtml;
+      }
+
       var results = dailyGridState.chosen.results.slice(0, 6);
-      el.innerHTML = results.map(function(item){
+      gridEl.innerHTML = results.map(function(item){
         return '<div class="daily-inline-cell"><img src="'+escapeAttr(item.thumbnail)+'" alt="" loading="lazy" referrerpolicy="no-referrer"></div>';
       }).join('');
+      if (actionsEl) actionsEl.style.display = '';
     }
 
     function openDailyGridModal(){
@@ -618,7 +660,7 @@
       h += '<div class="modal-cta-row">';
       h += '<button id="daily-grid-another" class="btn-secondary">🔄 下一榜<div class="en-helper" style="font-weight:400;">Next ranked batch</div></button>';
       h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
-      h += '<button id="daily-grid-share-card" class="btn-secondary">📤 保存分享卡<div class="en-helper" style="font-weight:400;">Save share card</div></button>';
+      h += '<button id="daily-grid-share-card" class="btn-secondary">📤 保存完整分享卡<div class="en-helper" style="font-weight:400;">Save full share card</div></button>';
       h += '</div>';
       h += '</div>';
 
@@ -645,7 +687,7 @@
         var q = dailyGridState.chosen.query;
         if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
       });
-      var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', handleSaveShareCard);
+      var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', function(){ handleSaveShareCard('full'); });
 
       var statusEl = document.getElementById('daily-grid-status');
       var gridEl = document.getElementById('daily-grid-image-grid');
@@ -673,8 +715,14 @@
     }
 
     // ---------------------------------------------------------------------
-    // Shareable "thirst trap" export card (Phase 1: full 1080x1350 card only —
-    // no teaser/2x3/2x2 variant yet, that's a separate follow-up).
+    // Shareable "thirst trap" export card.
+    //
+    // Phase 1 added the full 1080x1350 3x3 card ('full' variant). Phase 2
+    // adds a smaller/lighter 1080x1080 teaser card ('teaser' variant) with a
+    // 2x3 (or 2x2 fallback, when there are fewer than 6 results) image grid
+    // and a more compact header — meant for quicker inline sharing rather
+    // than the full moodboard. The 'full' variant's code path and pixel
+    // output are unchanged from Phase 1.
     //
     // Grid images are hotlinked directly from arbitrary third-party CDNs with
     // no CORS headers, so drawImage()-ing them straight into a <canvas> taints
@@ -687,6 +735,8 @@
 
     var EXPORT_CARD_W = 1080;
     var EXPORT_CARD_H = 1350;
+    var EXPORT_TEASER_W = 1080;
+    var EXPORT_TEASER_H = 1080;
 
     // Loads a single grid thumbnail through the image proxy. Resolves to an
     // Image on success; resolves to null (never rejects) on failure so one
@@ -780,13 +830,55 @@
       return lines;
     }
 
-    // Builds the full 1080x1350 share card for today's chosen batch and
-    // returns a Promise<HTMLCanvasElement>. `variant` is reserved for a future
-    // teaser layout ('2x3'/'2x2') — only 'full' is implemented in this phase.
+    // Loads the webfonts used by both export card variants, so CJK + Latin
+    // both render crisply instead of momentarily falling back to a system
+    // font mid-draw. Non-fatal on failure — worst case a fallback font draws.
+    async function loadExportCardFonts() {
+      try {
+        await Promise.all([
+          document.fonts.load('400 16px "Noto Sans SC"'),
+          document.fonts.load('600 16px "Noto Sans SC"'),
+          document.fonts.load('700 16px "Noto Sans SC"'),
+          document.fonts.load('400 16px "Inter"'),
+          document.fonts.load('600 16px "Inter"'),
+          document.fonts.load('700 16px "Inter"'),
+          document.fonts.ready
+        ]);
+      } catch (e) {
+        // Non-fatal — worst case the card draws with a fallback system font.
+      }
+    }
+
+    // Resolves the shared design-token colors (background/text/gold/accent)
+    // used by both export card variants, reading current CSS custom
+    // properties so the card matches whichever theme (dark/light) is active.
+    function readExportCardColors(actor) {
+      var rootStyle = getComputedStyle(document.documentElement);
+      var COLOR_BG = (rootStyle.getPropertyValue('--bg') || '#0e0e12').trim();
+      var COLOR_BG_CARD = (rootStyle.getPropertyValue('--bg-card') || '#14141a').trim();
+      var COLOR_TEXT = (rootStyle.getPropertyValue('--text') || '#f0ede8').trim();
+      var COLOR_TEXT_MUTED = (rootStyle.getPropertyValue('--text-muted') || '#a3a3ad').trim();
+      var COLOR_TEXT_DIM = (rootStyle.getPropertyValue('--text-dim') || '#8f8f99').trim();
+      var COLOR_TEXT_DARKER = (rootStyle.getPropertyValue('--text-darker') || '#6b6b6b').trim();
+      var COLOR_GOLD = (rootStyle.getPropertyValue('--gold') || '#c9a96e').trim();
+      var accentColor = (actor && actor.accentColor) || COLOR_GOLD;
+      return {
+        bg: COLOR_BG, bgCard: COLOR_BG_CARD, text: COLOR_TEXT, textMuted: COLOR_TEXT_MUTED,
+        textDim: COLOR_TEXT_DIM, textDarker: COLOR_TEXT_DARKER, gold: COLOR_GOLD, accent: accentColor
+      };
+    }
+
+    // Builds the share card canvas for today's chosen batch and returns a
+    // Promise<HTMLCanvasElement>. `variant` selects the layout:
+    //   'full'   — 1080x1350, full header + 3x3 grid (Phase 1, unchanged).
+    //   'teaser' — 1080x1080, compact header + 2x3 (or 2x2 fallback) grid.
     async function renderExportCanvas(payload, variant) {
       variant = variant || 'full';
+      if (variant === 'teaser') {
+        return renderTeaserExportCanvas(payload);
+      }
       if (variant !== 'full') {
-        throw new Error('Unsupported export variant: ' + variant + ' (only "full" is implemented so far)');
+        throw new Error('Unsupported export variant: ' + variant + ' (supported: "full", "teaser")');
       }
 
       var actor = payload.actor;
@@ -957,6 +1049,135 @@
       return canvas;
     }
 
+    // Builds the compact 1080x1080 teaser share card: same visual language
+    // (dark bg, gold accents, rounded image tiles, brand footer) as the full
+    // card, but a trimmed header (drops the spell/subtitle lines) and a
+    // smaller 2x3 image grid (falls back to 2x2 when there are fewer than 6
+    // results, so the grid never shows empty placeholder tiles for a
+    // thin/edge-case batch).
+    async function renderTeaserExportCanvas(payload) {
+      var actor = payload.actor;
+      var vibe = payload.vibe;
+      var chosen = payload.chosen;
+      var allResults = (chosen && Array.isArray(chosen.results)) ? chosen.results : [];
+      var useSix = allResults.length >= 6;
+      var cols = useSix ? 3 : 2;
+      var rows = 2;
+      var results = allResults.slice(0, cols * rows);
+
+      await loadExportCardFonts();
+
+      var imagesPromise = Promise.all(results.map(function (r) { return loadProxiedImage(r.thumbnail); }));
+
+      var colors = readExportCardColors(actor);
+      var accentColor = colors.accent;
+
+      var canvas = document.createElement('canvas');
+      canvas.width = EXPORT_TEASER_W;
+      canvas.height = EXPORT_TEASER_H;
+      var ctx = canvas.getContext('2d');
+
+      var PAD = 56;
+      var contentW = EXPORT_TEASER_W - PAD * 2;
+
+      // Background: near-black base + a soft radial glow of the accent color
+      // behind the header, matching the full card's look.
+      ctx.fillStyle = colors.bg;
+      ctx.fillRect(0, 0, EXPORT_TEASER_W, EXPORT_TEASER_H);
+      var glow = ctx.createRadialGradient(
+        EXPORT_TEASER_W / 2, 200, 30,
+        EXPORT_TEASER_W / 2, 200, 520
+      );
+      glow.addColorStop(0, hexToRgba(accentColor, 0.16));
+      glow.addColorStop(1, hexToRgba(accentColor, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, EXPORT_TEASER_W, EXPORT_TEASER_H);
+
+      ctx.textAlign = 'center';
+      var cx = EXPORT_TEASER_W / 2;
+      var y = PAD - 12;
+
+      // 1. Series/section label
+      y += 30;
+      ctx.font = '600 22px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = colors.gold;
+      ctx.fillText('今日氛围图鉴', cx, y);
+
+      // 2. Title (slightly smaller than the full card's — this is a teaser)
+      y += 48;
+      ctx.font = '700 38px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = colors.text;
+      ctx.fillText('🔮 今日之星 · 氛围格子', cx, y);
+
+      // 3. Actor name
+      if (actor && actor.name) {
+        y += 48;
+        ctx.font = '700 34px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = accentColor;
+        ctx.fillText(actor.name, cx, y);
+      }
+
+      // 4. Vibe name (with emoji) — the teaser stops here: no spell/subtitle
+      // lines, to keep the header compact and the text block light.
+      if (vibe && vibe.label) {
+        y += 40;
+        ctx.font = '600 26px "Noto Sans SC", "Inter", sans-serif';
+        ctx.fillStyle = colors.text;
+        ctx.fillText((vibe.emoji ? vibe.emoji + ' ' : '') + vibe.label, cx, y);
+      }
+
+      // 5. Image grid (2x3 or 2x2 fallback) — reserve the same footer zone
+      // used by the full card (source line + brand signature), then fit the
+      // grid into the remaining vertical room.
+      var footerZoneH = 118;
+      var gridTop = y + 34;
+      var gridBottom = EXPORT_TEASER_H - footerZoneH;
+      var gridGap = 12;
+      var gridAvailW = contentW;
+      var gridAvailH = gridBottom - gridTop;
+      var tileSize = Math.min((gridAvailW - gridGap * (cols - 1)) / cols, (gridAvailH - gridGap * (rows - 1)) / rows);
+      tileSize = Math.max(tileSize, 40); // sanity floor, same rationale as the full card
+      var gridW = tileSize * cols + gridGap * (cols - 1);
+      var gridH = tileSize * rows + gridGap * (rows - 1);
+      var gridX = (EXPORT_TEASER_W - gridW) / 2;
+      var gridY = gridTop + Math.max(0, (gridAvailH - gridH) / 2);
+
+      var images = await imagesPromise;
+      for (var row = 0; row < rows; row++) {
+        for (var col = 0; col < cols; col++) {
+          var idx = row * cols + col;
+          var tx = gridX + col * (tileSize + gridGap);
+          var ty = gridY + row * (tileSize + gridGap);
+          var img = images[idx];
+          if (img) {
+            drawCoverImageRounded(ctx, img, tx, ty, tileSize, tileSize, 14);
+          } else {
+            drawPlaceholderTileRounded(ctx, tx, ty, tileSize, tileSize, 14, colors.bgCard);
+          }
+        }
+      }
+
+      // 6. Sources — same reduced/minimal single line as the full card.
+      var sourceNames = [];
+      results.forEach(function (r) {
+        if (r.source && sourceNames.indexOf(r.source) === -1) sourceNames.push(r.source);
+      });
+      var sourcesLineY = EXPORT_TEASER_H - footerZoneH + 36;
+      if (sourceNames.length) {
+        ctx.font = '400 17px "Inter", "Noto Sans SC", sans-serif';
+        ctx.fillStyle = colors.textDarker;
+        var sourcesText = '来源：' + sourceNames.slice(0, 5).join(' · ');
+        ctx.fillText(sourcesText, cx, sourcesLineY);
+      }
+
+      // 7. Footer/brand signature — same copy as the full card.
+      ctx.font = '600 18px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = colors.gold;
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_TEASER_H - PAD + 22);
+
+      return canvas;
+    }
+
     // Converts a hex color (#rrggbb) to an rgba() string with the given alpha.
     // Falls back to a neutral gold-ish gray if parsing fails (defensive —
     // accentColor always comes from ACTOR_PACKS data, but this keeps the glow
@@ -968,14 +1189,21 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
-    // Wires up the "📤 保存分享卡" button: builds the export canvas, then tries
-    // navigator.share() (mobile-first, so it can go straight to Weibo/WeChat/
-    // whatever share sheet) and falls back to a plain download if sharing
-    // isn't available or the user cancels.
+    // Wires up the "📤 保存分享卡" buttons: builds the export canvas for the
+    // given variant ('full' by default, or 'teaser' for the compact card),
+    // then tries navigator.share() (mobile-first, so it can go straight to
+    // Weibo/WeChat/whatever share sheet) and falls back to a plain download
+    // if sharing isn't available or the user cancels. `sourceState` lets
+    // call sites outside the daily-star flow (e.g. the general actor/vibe
+    // browsing page) pass their own { actor, vibe, chosen } object instead
+    // of the daily-star dailyGridState — defaults to dailyGridState so every
+    // existing call site keeps working unchanged.
     var shareCardInFlight = false;
-    async function handleSaveShareCard() {
+    async function handleSaveShareCard(variant, sourceState) {
+      variant = variant || 'full';
+      sourceState = sourceState || dailyGridState;
       if (shareCardInFlight) return;
-      if (!dailyGridState.chosen || !dailyGridState.actor || !dailyGridState.vibe) {
+      if (!sourceState.chosen || !sourceState.actor || !sourceState.vibe) {
         showToast('今天的图还没准备好');
         return;
       }
@@ -984,10 +1212,10 @@
 
       try {
         var canvas = await renderExportCanvas({
-          actor: dailyGridState.actor,
-          vibe: dailyGridState.vibe,
-          chosen: dailyGridState.chosen
-        }, 'full');
+          actor: sourceState.actor,
+          vibe: sourceState.vibe,
+          chosen: sourceState.chosen
+        }, variant);
 
         var blob = await new Promise(function (resolve) {
           canvas.toBlob(function (b) { resolve(b); }, 'image/png');
@@ -999,8 +1227,9 @@
           return;
         }
 
-        var dateStr = dailyGridState.date || new Date().toISOString().slice(0, 10);
-        var fileName = 'today-vibe-' + dateStr + '.png';
+        var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
+        var fileSuffix = variant === 'teaser' ? '-teaser' : '';
+        var fileName = 'today-vibe-' + dateStr + fileSuffix + '.png';
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
@@ -1092,8 +1321,14 @@
       h+='<div style="margin-top:32px;text-align:center;">';
       h+='<div style="font-size:22px;font-weight:700;color:var(--gold-text);margin-bottom:6px;">今天想看谁？<div class="en-helper">Which one are we summoning today?</div></div>';
       h+='<div style="font-size:13px;color:var(--text-dim);font-style:italic;margin-bottom:28px;">随便逛逛，随时心动<div class="en-helper">Browse freely. Fall for him anytime.</div></div>';
-      h+='<div class="daily-card"><div id="daily-inline-preview" class="daily-inline-preview"></div>';
-      h+='<button id="btn-daily-grid" class="btn-primary" style="margin-bottom:28px;">🔮 召唤今日格子<div class="en-helper" style="font-weight:400;">Summon today\'s grid</div></button></div>';
+      h+='<div class="daily-card"><div id="daily-teaser-card" class="teaser-card">';
+      h+='<div id="daily-teaser-header" class="teaser-card-header"></div>';
+      h+='<div id="daily-inline-preview" class="daily-inline-preview"></div>';
+      h+='<div id="daily-teaser-actions" class="teaser-card-actions">';
+      h+='<button id="daily-teaser-share" class="btn-secondary">📤 分享预览卡<div class="en-helper" style="font-weight:400;">Share mini teaser</div></button>';
+      h+='<button id="daily-teaser-open-full" class="btn-primary">打开完整版<div class="en-helper" style="font-weight:400;">Open full version</div></button>';
+      h+='</div>';
+      h+='</div></div>';
       h+='</div>';
       for(var i=0;i<ACTOR_PACKS.length;i++){var a=ACTOR_PACKS[i];var cs=actorCardStyle(a);h+='<div class="actor-card" data-actor="'+i+'" style="background:'+cs.background+';border:'+cs.border+';box-shadow:'+cs.boxShadow+';"><div><div style="font-size:28px;margin-bottom:6px;">'+a.icon+'</div><div style="font-size:18px;font-weight:700;color:'+cs.textColor+';">'+a.name+'</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">'+a.title+'<div class="en-helper">'+a.title_en+'</div></div></div><span style="color:var(--text-dark);font-size:18px;">→</span></div>';}
       h+='<div style="text-align:center;color:var(--text-darker);font-size:11px;margin-top:40px;">姐妹共享版 · 随时心动</div>';
@@ -1138,6 +1373,7 @@
       h+='<p id="preview-image-status" class="preview-status"></p>';
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
       h+='<div id="preview-image-sources" class="modal-sources"></div>';
+      h+='<button id="preview-share-card" class="btn-secondary" style="width:100%;margin-top:4px;margin-bottom:16px;">📤 导出分享卡<div class="en-helper" style="font-weight:400;">Export share card</div></button>';
       h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
@@ -1176,8 +1412,8 @@
       var langBtn=document.getElementById('lang-toggle'); if(langBtn)langBtn.addEventListener('click',toggleLang);
       var themeBtn=document.getElementById('theme-toggle'); if(themeBtn)themeBtn.addEventListener('click',toggleTheme);
       if(state.page==='home'){
-        var dgb=document.getElementById('btn-daily-grid'); if(dgb)dgb.addEventListener('click',openDailyGridModal);
-        var dip=document.getElementById('daily-inline-preview'); if(dip)dip.addEventListener('click',openDailyGridModal);
+        var dts=document.getElementById('daily-teaser-share'); if(dts)dts.addEventListener('click',function(){ handleSaveShareCard('teaser'); });
+        var dtf=document.getElementById('daily-teaser-open-full'); if(dtf)dtf.addEventListener('click',openDailyGridModal);
         document.querySelectorAll('.actor-card').forEach(function(c){c.addEventListener('click',function(){goActor(parseInt(c.getAttribute('data-actor')));});});
       }
       if(state.page==='actor'){
@@ -1203,6 +1439,7 @@
         var cq=document.getElementById('btn-copy-query'); if(cq)cq.addEventListener('click',copyActiveQuery);
         var pc=document.getElementById('preview-copy'); if(pc)pc.addEventListener('click',copyActiveQuery);
         var po=document.getElementById('preview-open'); if(po)po.addEventListener('click',function(){var target=document.getElementById('external-search-section'); if(target)target.scrollIntoView({behavior:'smooth',block:'start'});});
+        var psc=document.getElementById('preview-share-card'); if(psc)psc.addEventListener('click',function(){ handleSaveShareCard('full', previewExportState); });
       }
     }
 
