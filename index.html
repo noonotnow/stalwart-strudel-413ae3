@@ -163,9 +163,9 @@
       /* Top-weighted crop bias: portrait/person photos disproportionately have
          the face/head in the upper part of the frame, so a dead-center crop
          (50% 50%) tends to slice through foreheads or crop too tight under the
-         chin. 22% shifts the visible window up, keeping more headroom-to-face
+         chin. 15% shifts the visible window up, keeping more headroom-to-face
          intact and cropping more off the bottom instead of splitting evenly. */
-      object-position: 50% 22%;
+      object-position: 50% 15%;
       display: block;
     }
     .preview-image-caption {
@@ -211,7 +211,7 @@
     .teaser-card-header .teaser-card-vibe { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
     .daily-inline-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
     .daily-inline-cell { border-radius: 10px; overflow: hidden; background: var(--bg-card); aspect-ratio: 1 / 1; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
-    .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; display: block; }
+    .daily-inline-cell img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 15%; display: block; }
     .daily-inline-cell.is-skeleton { background: linear-gradient(110deg, var(--bg-card) 8%, var(--shimmer-highlight) 18%, var(--bg-card) 33%); background-size: 200% 100%; animation: daily-shimmer 1.4s linear infinite; }
     @keyframes daily-shimmer { to { background-position-x: -200%; } }
     @media (max-width: 480px) { .daily-inline-preview { grid-template-columns: repeat(2, 1fr); } .daily-inline-preview .daily-inline-cell:nth-child(n+5) { display: none; } }
@@ -780,14 +780,14 @@
         sy = 0;
       } else {
         // source taller than dest -> crop top/bottom. Bias the crop window
-        // upward (same 22% top bias as the CSS object-position rules for the
+        // upward (same 15% top bias as the CSS object-position rules for the
         // modal/full-grid/teaser) since portraits disproportionately have the
         // face/head in the upper part of the frame — centering here tends to
         // slice through foreheads or crop too tight under the chin.
         sw = srcW;
         sh = srcW / dstRatio;
         sx = 0;
-        sy = (srcH - sh) * 0.22;
+        sy = (srcH - sh) * 0.15;
       }
       ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
       ctx.restore();
