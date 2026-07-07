@@ -736,9 +736,22 @@
       }
 
       var results = dailyGridState.chosen.results.slice(0, 6);
-      gridEl.innerHTML = results.map(function(item){
-        return '<div class="daily-inline-cell"><img src="'+escapeAttr(item.thumbnail)+'" alt="" loading="lazy" referrerpolicy="no-referrer"></div>';
+      gridEl.innerHTML = results.map(function(item, idx){
+        // First 4 images load eagerly (visible in portrait 2×2 grid);
+        // remaining use lazy since they're only visible in landscape/wider viewports.
+        var loadAttr = idx < 4 ? 'eager' : 'lazy';
+        return '<div class="daily-inline-cell"><img src="'+escapeAttr(item.thumbnail)+'" alt="" loading="'+loadAttr+'" referrerpolicy="no-referrer"></div>';
       }).join('');
+      // Wire up onerror handlers: hide the broken-image cell so portrait
+      // mode never shows browser X/? placeholders. If ALL visible images
+      // fail the grid simply collapses rather than flashing broken tiles.
+      var cells = gridEl.querySelectorAll('.daily-inline-cell img');
+      cells.forEach(function(img){
+        img.onerror = function(){
+          var cell = img.parentElement;
+          if (cell) cell.style.display = 'none';
+        };
+      });
       if (actionsEl) actionsEl.style.display = '';
     }
 
