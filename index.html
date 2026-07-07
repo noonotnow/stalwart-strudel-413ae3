@@ -455,7 +455,7 @@
       if (sourcesEl) sourcesEl.innerHTML = "";
 
       try {
-        const { results } = await fetchPreviewData(query);
+        const { results, provider } = await fetchPreviewData(query);
         if (requestId !== previewRequestId) return;
         renderImageGrid(gridEl, statusEl, results, query, () => requestId !== previewRequestId, false);
         if (sourcesEl) {
@@ -470,7 +470,18 @@
         if (previewActor && previewVibe) {
           previewExportState.actor = previewActor;
           previewExportState.vibe = previewVibe;
-          previewExportState.chosen = { query: query, results: results };
+          // count/distinctSources/provider mirror the fields the daily-star
+          // path's rankCandidates() output already carries (see
+          // netlify/functions/lib/ranking.js) — computed here so
+          // classifyEditionTier() has real signal on this path too, instead
+          // of just for the ranked daily-star batches.
+          previewExportState.chosen = {
+            query: query,
+            results: results,
+            count: results.length,
+            distinctSources: countDistinctSourcesClient(results),
+            provider: provider || null
+          };
         }
       } catch (e) {
         if (requestId !== previewRequestId) return;
@@ -900,6 +911,183 @@
       };
     }
 
+    // --- Edition/collectible "practical layer" helpers (copy/layout/filename)
+    // plus the tier classification layer (copy-only for v1 — no visual/color/
+    // glow differentiation, no archive/gallery, no manual re-tier gesture;
+    // those stay explicit future follow-ups, see PR description) ---
+
+    // Zero-pads a non-negative integer to 2 digits ("0" -> "00", "3" -> "03").
+    function pad2(n) {
+      var s = String(Math.max(0, n | 0));
+      return s.length >= 2 ? s : ('0' + s);
+    }
+
+    // Same simple string-hash shape as the server's hashDateString (see
+    // netlify/functions/lib/date-seed.js) — kept as an independent client-side
+    // copy since this only needs to deterministically seed cosmetic flavor
+    // text (micro-copy line selection), not the actual actor/vibe pick.
+    function hashStringToUint(str) {
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        hash = (hash << 5) - hash + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return hash >>> 0;
+    }
+
+    // Client-side counterpart of netlify/functions/lib/ranking.js's
+    // countDistinctSources — used as a fallback only for the general
+    // actor/vibe-page path in case a chosen object shows up without a
+    // precomputed distinctSources field (fetchPreviewImages normally sets one
+    // directly from the live results, see below).
+    function countDistinctSourcesClient(results) {
+      var seen = {};
+      var n = 0;
+      (results || []).forEach(function (r) {
+        if (r && r.source && !seen[r.source]) { seen[r.source] = true; n++; }
+      });
+      return n;
+    }
+
+    // Fixed pool of rotating "standard" tier micro-copy lines for the share
+    // card footer. Selected deterministically by date so re-rendering the
+    // same day's card always picks the same line (not random-per-render).
+    var MICRO_COPY_LINES = [
+      '今天也在为磕生磕死的你效劳',
+      'friendship-powered, not sponsored',
+      '存图不吃亏，动图更香',
+      '今日限定，明天不认账',
+      '氛围不散，磕学不止',
+      'made with love and mild obsession'
+    ];
+    // Misprint/Legendary tiers get their own dedicated micro-copy pools —
+    // same date-seeded selection approach as the standard pool.
+    var MISPRINT_MICRO_COPY_LINES = [
+      'Rare misprint detected.',
+      'This edition escaped quality control.',
+      'Known collector anomaly.',
+      'The grid was haunted at export time.'
+    ];
+    var LEGENDARY_MICRO_COPY_LINES = [
+      'Not reproducible. Deeply memorable.',
+      'A relic from the unstable era.',
+      'Collectors still speak of this batch in hushed tones.',
+      'Too wrong to discard. Too iconic to ignore.'
+    ];
+    function pickMicroCopyLine(dateStr, tier) {
+      var pool = tier === 'misprint' ? MISPRINT_MICRO_COPY_LINES
+        : tier === 'legendary' ? LEGENDARY_MICRO_COPY_LINES
+        : MICRO_COPY_LINES;
+      var idx = hashStringToUint('microcopy:' + tier + ':' + (dateStr || '')) % pool.length;
+      return pool[idx];
+    }
+
+    // "#MMDD-NN" edition catalog code. `dateStr` is "YYYY-MM-DD"; `rankNum` is
+    // the 1-based rank (or 0 when there's no batch/rank concept, e.g. the
+    // general actor/vibe-page live-search path).
+    function formatEditionCode(dateStr, rankNum) {
+      var mmdd = (dateStr && dateStr.length >= 10) ? (dateStr.slice(5, 7) + dateStr.slice(8, 10)) : '0000';
+      return '#' + mmdd + '-' + pad2(rankNum);
+    }
+
+    // Appends the tier tag next to the catalog code for non-standard tiers
+    // (e.g. "#0707-01 · misprint") — standard tier renders the bare code,
+    // unchanged from the practical-layer-only behavior.
+    function editionCodeTagText(dateStr, rankNum, tier) {
+      var code = formatEditionCode(dateStr, rankNum);
+      if (tier === 'misprint') return code + ' · misprint';
+      if (tier === 'legendary') return code + ' · relic-class';
+      return code;
+    }
+
+    // Filename-safe actor slug — prefers the already-filename-safe
+    // shortName_en (e.g. "Liu Yuning" -> "liu-yuning") over inventing a new
+    // slugification scheme from the Chinese display name.
+    function actorFilenameSlug(actor) {
+      var base = (actor && (actor.shortName_en || actor.name)) || 'star';
+      return String(base).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'star';
+    }
+
+    // Builds the "vibe-guide_<date>_<actor-slug>_ep<NN>[_teaser].png" filename.
+    // `rankNum` follows the same 1-based-or-0 convention as formatEditionCode.
+    function buildExportFilename(dateStr, actor, rankNum, variant) {
+      var slug = actorFilenameSlug(actor);
+      var nn = pad2(rankNum);
+      var suffix = variant === 'teaser' ? '_teaser' : '';
+      return 'vibe-guide_' + dateStr + '_' + slug + '_ep' + nn + suffix + '.png';
+    }
+
+    // Builds the two-line footer stack text (brand line is drawn separately;
+    // this returns just the edition-stamp second line) plus the resolved
+    // 1-based rank number (0 when there's no batch/rank concept). For
+    // Misprint/Legendary tiers the trailing segment always swaps to the
+    // tier's own phrase (independent of whether a rank exists); for the
+    // Standard tier the trailing "第 N/M 期" segment only appears when a
+    // rank/totalBatches concept is present (daily-star path).
+    function buildEditionStampLine(dateStr, actor, vibe, rankIndex, totalBatches, tier) {
+      var hasRank = typeof rankIndex === 'number' && typeof totalBatches === 'number' && totalBatches > 0;
+      var rankNum = hasRank ? (rankIndex + 1) : 0;
+      var parts = [dateStr, (actor && actor.name) || '', (vibe && vibe.label) || ''].filter(Boolean);
+      var text = parts.join(' · ');
+      var trailing = null;
+      if (tier === 'misprint') trailing = 'misprint pull';
+      else if (tier === 'legendary') trailing = 'unstable era';
+      else if (hasRank) trailing = '第 ' + rankNum + ' / ' + totalBatches + ' 期';
+      if (trailing) text += ' · ' + trailing;
+      return { text: text, rankNum: rankNum };
+    }
+
+    // Fallback-ladder depth per provider, mirroring the Brave -> SerpAPI
+    // (bing_images -> google_images -> yandex_images) cascade in
+    // preview-search.js. 0 = primary path (Brave); 1-3 = how deep into the
+    // SerpAPI fallback ladder the final usable results came from. This is
+    // the cleanest "primary vs fallback, and how deep" signal actually
+    // exposed by the search layer today — no new tracking was invented.
+    var FALLBACK_ENGINE_DEPTH = { brave: 0, bing_images: 1, google_images: 2, yandex_images: 3 };
+
+    // Classifies a chosen batch into a "Standard" / "Misprint" / "Legendary"
+    // edition tier. Copy-only signal for v1 — see PR description for what's
+    // deliberately NOT built (visual/color/glow differentiation, manual
+    // re-tier override, archive/gallery view).
+    //
+    // Thresholds (as approved):
+    //   Standard:  count >= 7 AND distinctSources >= 3 AND came from the
+    //              primary provider (Brave, fallback depth 0).
+    //   Misprint:  count between 3-6 (inclusive) OR distinctSources <= 2
+    //              (and not also Legendary).
+    //   Legendary: count between 3-6 AND distinctSources <= 2 AND came from
+    //              deep in the fallback ladder (depth >= 2, i.e. reached at
+    //              least google_images — bing_images alone, the first/
+    //              shallowest fallback rung, only ever yields Misprint).
+    //
+    // A batch that clears the count/diversity bar but didn't come from the
+    // primary provider (rare in practice) doesn't strictly satisfy the
+    // Standard definition above, but also doesn't fall into the Misprint
+    // numeric range — it defaults to Standard rather than being left
+    // unclassified, since strong count+diversity numbers are what a
+    // "Standard" edition is meant to represent regardless of which provider
+    // happened to source it.
+    function classifyEditionTier(chosen) {
+      var count = (chosen && typeof chosen.count === 'number')
+        ? chosen.count
+        : (chosen && Array.isArray(chosen.results) ? chosen.results.length : 0);
+      var distinctSources = (chosen && typeof chosen.distinctSources === 'number')
+        ? chosen.distinctSources
+        : countDistinctSourcesClient(chosen && chosen.results);
+      var provider = chosen && chosen.provider;
+      var depth = FALLBACK_ENGINE_DEPTH.hasOwnProperty(provider) ? FALLBACK_ENGINE_DEPTH[provider] : 0;
+      var isPrimary = depth === 0;
+
+      if (count >= 7 && distinctSources >= 3 && isPrimary) return 'standard';
+
+      var inMisprintRange = (count >= 3 && count <= 6) || distinctSources <= 2;
+      if (!inMisprintRange) return 'standard';
+
+      var isDeepFallback = depth >= 2;
+      if (count >= 3 && count <= 6 && distinctSources <= 2 && isDeepFallback) return 'legendary';
+      return 'misprint';
+    }
+
     // Builds the share card canvas for today's chosen batch and returns a
     // Promise<HTMLCanvasElement>. `variant` selects the layout:
     //   'full'   — 1080x1350, full header + 3x3 grid (Phase 1, unchanged).
@@ -917,6 +1105,11 @@
       var vibe = payload.vibe;
       var chosen = payload.chosen;
       var results = (chosen && Array.isArray(chosen.results)) ? chosen.results.slice(0, 9) : [];
+      var dateStr = payload.date || new Date().toISOString().slice(0, 10);
+      var tier = classifyEditionTier(chosen);
+      var editionStamp = buildEditionStampLine(dateStr, actor, vibe, payload.rankIndex, payload.totalBatches, tier);
+      var editionCodeTag = editionCodeTagText(dateStr, editionStamp.rankNum, tier);
+      var microCopy = pickMicroCopyLine(dateStr, tier);
 
       // Make sure the webfonts already linked in <head> are actually ready
       // before we measure/draw text, so CJK + Latin both render crisply
@@ -981,6 +1174,13 @@
       ctx.fillStyle = COLOR_GOLD;
       ctx.fillText('今日氛围图鉴', cx, y);
 
+      // 1b. Edition catalog code (+ tier tag for Misprint/Legendary) — small,
+      // letter-spaced/monospace, gold accent.
+      y += 26;
+      ctx.font = '600 15px "Inter", monospace';
+      ctx.fillStyle = hexToRgba(COLOR_GOLD, 0.8);
+      drawLetterSpacedText(ctx, editionCodeTag, cx, y, 2);
+
       // 2. Title
       y += 56;
       ctx.font = '700 46px "Noto Sans SC", "Inter", sans-serif';
@@ -1032,7 +1232,7 @@
       // fit the largest square 3x3 grid into whatever vertical room remains
       // between the header text (wherever it ended up, above) and that
       // footer zone.
-      var footerZoneH = 130;
+      var footerZoneH = 168;
       var gridTop = y + 36;
       var gridBottom = EXPORT_CARD_H - footerZoneH;
       var gridGap = 12;
@@ -1073,10 +1273,20 @@
         ctx.fillText(sourcesText, cx, sourcesLineY);
       }
 
-      // 9. Footer/brand signature
+      // 9. Footer stack: brand line, edition-stamp line, then the rotating
+      // micro-copy line — smallest/dimmest, bottom-most, never competing
+      // with the header. All three sit within the reserved footerZoneH.
       ctx.font = '600 20px "Inter", "Noto Sans SC", sans-serif';
       ctx.fillStyle = COLOR_GOLD;
-      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_CARD_H - PAD + 24);
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴 · fandom.justlikekatie.com', cx, EXPORT_CARD_H - 96);
+
+      ctx.font = '400 17px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = COLOR_TEXT_DIM;
+      ctx.fillText(editionStamp.text, cx, EXPORT_CARD_H - 68);
+
+      ctx.font = '400 15px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = hexToRgba(COLOR_TEXT_DARKER, 0.85);
+      ctx.fillText(microCopy, cx, EXPORT_CARD_H - 40);
 
       return canvas;
     }
@@ -1096,6 +1306,11 @@
       var cols = useSix ? 3 : 2;
       var rows = 2;
       var results = allResults.slice(0, cols * rows);
+      var dateStr = payload.date || new Date().toISOString().slice(0, 10);
+      var tier = classifyEditionTier(chosen);
+      var editionStamp = buildEditionStampLine(dateStr, actor, vibe, payload.rankIndex, payload.totalBatches, tier);
+      var editionCodeTag = editionCodeTagText(dateStr, editionStamp.rankNum, tier);
+      var microCopy = pickMicroCopyLine(dateStr, tier);
 
       await loadExportCardFonts();
 
@@ -1135,6 +1350,12 @@
       ctx.fillStyle = colors.gold;
       ctx.fillText('今日氛围图鉴', cx, y);
 
+      // 1b. Edition catalog code (+ tier tag) — small, letter-spaced/monospace, gold accent.
+      y += 22;
+      ctx.font = '600 13px "Inter", monospace';
+      ctx.fillStyle = hexToRgba(colors.gold, 0.8);
+      drawLetterSpacedText(ctx, editionCodeTag, cx, y, 2);
+
       // 2. Title (slightly smaller than the full card's — this is a teaser)
       y += 48;
       ctx.font = '700 38px "Noto Sans SC", "Inter", sans-serif';
@@ -1161,7 +1382,7 @@
       // 5. Image grid (2x3 or 2x2 fallback) — reserve the same footer zone
       // used by the full card (source line + brand signature), then fit the
       // grid into the remaining vertical room.
-      var footerZoneH = 118;
+      var footerZoneH = 150;
       var gridTop = y + 34;
       var gridBottom = EXPORT_TEASER_H - footerZoneH;
       var gridGap = 12;
@@ -1202,12 +1423,40 @@
         ctx.fillText(sourcesText, cx, sourcesLineY);
       }
 
-      // 7. Footer/brand signature — same copy as the full card.
+      // 7. Footer stack: brand line, edition-stamp line, then the rotating
+      // micro-copy line — smaller/dimmer, bottom-most, same convention as
+      // the full card.
       ctx.font = '600 18px "Inter", "Noto Sans SC", sans-serif';
       ctx.fillStyle = colors.gold;
-      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_TEASER_H - PAD + 22);
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴 · fandom.justlikekatie.com', cx, EXPORT_TEASER_H - 84);
+
+      ctx.font = '400 15px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = colors.textDim;
+      ctx.fillText(editionStamp.text, cx, EXPORT_TEASER_H - 60);
+
+      ctx.font = '400 14px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = hexToRgba(colors.textDarker, 0.85);
+      ctx.fillText(microCopy, cx, EXPORT_TEASER_H - 34);
 
       return canvas;
+    }
+
+    // Draws horizontally-centered text with manual letter-spacing (canvas has
+    // no native letter-spacing in the browsers we support here) — used for
+    // the small monospace edition catalog code so it reads as a stamped code
+    // rather than plain body text.
+    function drawLetterSpacedText(ctx, text, cx, y, spacing) {
+      var chars = String(text).split('');
+      var widths = chars.map(function (ch) { return ctx.measureText(ch).width; });
+      var totalW = widths.reduce(function (a, b) { return a + b; }, 0) + spacing * (chars.length - 1);
+      var prevAlign = ctx.textAlign;
+      ctx.textAlign = 'left';
+      var x = cx - totalW / 2;
+      for (var i = 0; i < chars.length; i++) {
+        ctx.fillText(chars[i], x, y);
+        x += widths[i] + spacing;
+      }
+      ctx.textAlign = prevAlign;
     }
 
     // Converts a hex color (#rrggbb) to an rgba() string with the given alpha.
@@ -1242,11 +1491,19 @@
       shareCardInFlight = true;
       showToast('正在生成分享卡……');
 
+      var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
+      var hasRank = typeof sourceState.rankIndex === 'number' && Array.isArray(sourceState.rankedBatches) && sourceState.rankedBatches.length > 0;
+      var rankNum = hasRank ? (sourceState.rankIndex + 1) : 0;
+      var tier = classifyEditionTier(sourceState.chosen);
+
       try {
         var canvas = await renderExportCanvas({
           actor: sourceState.actor,
           vibe: sourceState.vibe,
-          chosen: sourceState.chosen
+          chosen: sourceState.chosen,
+          date: dateStr,
+          rankIndex: hasRank ? sourceState.rankIndex : null,
+          totalBatches: hasRank ? sourceState.rankedBatches.length : null
         }, variant);
 
         var blob = await new Promise(function (resolve) {
@@ -1259,9 +1516,7 @@
           return;
         }
 
-        var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
-        var fileSuffix = variant === 'teaser' ? '-teaser' : '';
-        var fileName = 'today-vibe-' + dateStr + fileSuffix + '.png';
+        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant);
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
@@ -1291,7 +1546,10 @@
           a.click();
           a.remove();
           setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 4000);
-          showToast('分享卡已保存 ✓');
+          var savedToast = tier === 'misprint' ? '已保存稀有错版 · Misprint preserved'
+            : tier === 'legendary' ? '已保存传说级错版 · Legendary save'
+            : '分享卡已保存 ✓';
+          showToast(savedToast);
         }
       } catch (err) {
         showToast('分享卡生成失败，再试一次？');
