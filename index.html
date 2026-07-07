@@ -427,6 +427,14 @@
       }
     }
 
+    // Shared export state for the general actor/vibe browsing flow (renderVibePage()),
+    // mirroring the shape handleSaveShareCard()/renderExportCanvas() already expect from
+    // dailyGridState ({ actor, vibe, chosen: { query, results } }) — this is what lets the
+    // "share card" button on the vibe page build an export payload without a daily-star
+    // ranked batch. Populated once a preview fetch actually succeeds; cleared on failure
+    // so the share button's guard (missing actor/vibe/chosen) kicks in correctly.
+    var previewExportState = { actor: null, vibe: null, chosen: null };
+
     async function fetchPreviewImages(query) {
       const statusEl = document.getElementById("preview-image-status");
       const gridEl = document.getElementById("preview-image-grid");
@@ -451,9 +459,17 @@
             ? '来源站点<span class="en-helper-inline"> · Sources</span>：' + sources.map((s) => '<span class="source-chip">' + s + '</span>').join('')
             : '';
         }
+        var previewActor = ACTOR_PACKS && ACTOR_PACKS[state.actorIdx];
+        var previewVibe = previewActor && previewActor.vibes[state.vibeIdx];
+        if (previewActor && previewVibe) {
+          previewExportState.actor = previewActor;
+          previewExportState.vibe = previewVibe;
+          previewExportState.chosen = { query: query, results: results };
+        }
       } catch (e) {
         if (requestId !== previewRequestId) return;
         statusEl.textContent = "图片跑丢了，但咒语还在。";
+        previewExportState.chosen = null;
       }
     }
 
@@ -1166,12 +1182,17 @@
     // given variant ('full' by default, or 'teaser' for the compact card),
     // then tries navigator.share() (mobile-first, so it can go straight to
     // Weibo/WeChat/whatever share sheet) and falls back to a plain download
-    // if sharing isn't available or the user cancels.
+    // if sharing isn't available or the user cancels. `sourceState` lets
+    // call sites outside the daily-star flow (e.g. the general actor/vibe
+    // browsing page) pass their own { actor, vibe, chosen } object instead
+    // of the daily-star dailyGridState — defaults to dailyGridState so every
+    // existing call site keeps working unchanged.
     var shareCardInFlight = false;
-    async function handleSaveShareCard(variant) {
+    async function handleSaveShareCard(variant, sourceState) {
       variant = variant || 'full';
+      sourceState = sourceState || dailyGridState;
       if (shareCardInFlight) return;
-      if (!dailyGridState.chosen || !dailyGridState.actor || !dailyGridState.vibe) {
+      if (!sourceState.chosen || !sourceState.actor || !sourceState.vibe) {
         showToast('今天的图还没准备好');
         return;
       }
@@ -1180,9 +1201,9 @@
 
       try {
         var canvas = await renderExportCanvas({
-          actor: dailyGridState.actor,
-          vibe: dailyGridState.vibe,
-          chosen: dailyGridState.chosen
+          actor: sourceState.actor,
+          vibe: sourceState.vibe,
+          chosen: sourceState.chosen
         }, variant);
 
         var blob = await new Promise(function (resolve) {
@@ -1195,7 +1216,7 @@
           return;
         }
 
-        var dateStr = dailyGridState.date || new Date().toISOString().slice(0, 10);
+        var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
         var fileSuffix = variant === 'teaser' ? '-teaser' : '';
         var fileName = 'today-vibe-' + dateStr + fileSuffix + '.png';
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
@@ -1341,6 +1362,7 @@
       h+='<p id="preview-image-status" class="preview-status"></p>';
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
       h+='<div id="preview-image-sources" class="modal-sources"></div>';
+      h+='<button id="preview-share-card" class="btn-secondary" style="width:100%;margin-top:4px;margin-bottom:16px;">📤 导出分享卡<div class="en-helper" style="font-weight:400;">Export share card</div></button>';
       h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
@@ -1406,6 +1428,7 @@
         var cq=document.getElementById('btn-copy-query'); if(cq)cq.addEventListener('click',copyActiveQuery);
         var pc=document.getElementById('preview-copy'); if(pc)pc.addEventListener('click',copyActiveQuery);
         var po=document.getElementById('preview-open'); if(po)po.addEventListener('click',function(){var target=document.getElementById('external-search-section'); if(target)target.scrollIntoView({behavior:'smooth',block:'start'});});
+        var psc=document.getElementById('preview-share-card'); if(psc)psc.addEventListener('click',function(){ handleSaveShareCard('full', previewExportState); });
       }
     }
 
