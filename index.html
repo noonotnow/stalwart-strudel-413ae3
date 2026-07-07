@@ -900,6 +900,81 @@
       };
     }
 
+    // --- Edition/collectible "practical layer" helpers (copy/layout/filename
+    // only — no tier/badge/archive logic here, see PR description) ---
+
+    // Zero-pads a non-negative integer to 2 digits ("0" -> "00", "3" -> "03").
+    function pad2(n) {
+      var s = String(Math.max(0, n | 0));
+      return s.length >= 2 ? s : ('0' + s);
+    }
+
+    // Same simple string-hash shape as the server's hashDateString (see
+    // netlify/functions/lib/date-seed.js) — kept as an independent client-side
+    // copy since this only needs to deterministically seed cosmetic flavor
+    // text (micro-copy line selection), not the actual actor/vibe pick.
+    function hashStringToUint(str) {
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        hash = (hash << 5) - hash + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return hash >>> 0;
+    }
+
+    // Fixed pool of rotating micro-copy lines for the share card footer.
+    // Selected deterministically by date so re-rendering the same day's card
+    // always picks the same line (not random-per-render).
+    var MICRO_COPY_LINES = [
+      '今天也在为磐生磐死的你效劳',
+      'friendship-powered, not sponsored',
+      '存图不吃亏，动图更香',
+      '今日限定，明天不认账',
+      '氛围不散，磐学不止',
+      'made with love and mild obsession'
+    ];
+    function pickMicroCopyLine(dateStr) {
+      var idx = hashStringToUint('microcopy:' + (dateStr || '')) % MICRO_COPY_LINES.length;
+      return MICRO_COPY_LINES[idx];
+    }
+
+    // "#MMDD-NN" edition catalog code. `dateStr` is "YYYY-MM-DD"; `rankNum` is
+    // the 1-based rank (or 0 when there's no batch/rank concept, e.g. the
+    // general actor/vibe-page live-search path).
+    function formatEditionCode(dateStr, rankNum) {
+      var mmdd = (dateStr && dateStr.length >= 10) ? (dateStr.slice(5, 7) + dateStr.slice(8, 10)) : '0000';
+      return '#' + mmdd + '-' + pad2(rankNum);
+    }
+
+    // Filename-safe actor slug — prefers the already-filename-safe
+    // shortName_en (e.g. "Liu Yuning" -> "liu-yuning") over inventing a new
+    // slugification scheme from the Chinese display name.
+    function actorFilenameSlug(actor) {
+      var base = (actor && (actor.shortName_en || actor.name)) || 'star';
+      return String(base).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'star';
+    }
+
+    // Builds the "vibe-guide_<date>_<actor-slug>_ep<NN>[_teaser].png" filename.
+    // `rankNum` follows the same 1-based-or-0 convention as formatEditionCode.
+    function buildExportFilename(dateStr, actor, rankNum, variant) {
+      var slug = actorFilenameSlug(actor);
+      var nn = pad2(rankNum);
+      var suffix = variant === 'teaser' ? '_teaser' : '';
+      return 'vibe-guide_' + dateStr + '_' + slug + '_ep' + nn + suffix + '.png';
+    }
+
+    // Builds the two-line footer stack text (brand line is drawn separately;
+    // this returns just the edition-stamp second line) plus the resolved
+    // 1-based rank number (0 when there's no batch/rank concept).
+    function buildEditionStampLine(dateStr, actor, vibe, rankIndex, totalBatches) {
+      var hasRank = typeof rankIndex === 'number' && typeof totalBatches === 'number' && totalBatches > 0;
+      var rankNum = hasRank ? (rankIndex + 1) : 0;
+      var parts = [dateStr, (actor && actor.name) || '', (vibe && vibe.label) || ''].filter(Boolean);
+      var text = parts.join(' · ');
+      if (hasRank) text += ' · 第 ' + rankNum + ' / ' + totalBatches + ' 期';
+      return { text: text, rankNum: rankNum };
+    }
+
     // Builds the share card canvas for today's chosen batch and returns a
     // Promise<HTMLCanvasElement>. `variant` selects the layout:
     //   'full'   — 1080x1350, full header + 3x3 grid (Phase 1, unchanged).
@@ -917,6 +992,10 @@
       var vibe = payload.vibe;
       var chosen = payload.chosen;
       var results = (chosen && Array.isArray(chosen.results)) ? chosen.results.slice(0, 9) : [];
+      var dateStr = payload.date || new Date().toISOString().slice(0, 10);
+      var editionStamp = buildEditionStampLine(dateStr, actor, vibe, payload.rankIndex, payload.totalBatches);
+      var editionCode = formatEditionCode(dateStr, editionStamp.rankNum);
+      var microCopy = pickMicroCopyLine(dateStr);
 
       // Make sure the webfonts already linked in <head> are actually ready
       // before we measure/draw text, so CJK + Latin both render crisply
@@ -981,6 +1060,12 @@
       ctx.fillStyle = COLOR_GOLD;
       ctx.fillText('今日氛围图鉴', cx, y);
 
+      // 1b. Edition catalog code — small, letter-spaced/monospace, gold accent.
+      y += 26;
+      ctx.font = '600 15px "Inter", monospace';
+      ctx.fillStyle = hexToRgba(COLOR_GOLD, 0.8);
+      drawLetterSpacedText(ctx, editionCode, cx, y, 2);
+
       // 2. Title
       y += 56;
       ctx.font = '700 46px "Noto Sans SC", "Inter", sans-serif';
@@ -1032,7 +1117,7 @@
       // fit the largest square 3x3 grid into whatever vertical room remains
       // between the header text (wherever it ended up, above) and that
       // footer zone.
-      var footerZoneH = 130;
+      var footerZoneH = 168;
       var gridTop = y + 36;
       var gridBottom = EXPORT_CARD_H - footerZoneH;
       var gridGap = 12;
@@ -1073,10 +1158,20 @@
         ctx.fillText(sourcesText, cx, sourcesLineY);
       }
 
-      // 9. Footer/brand signature
+      // 9. Footer stack: brand line, edition-stamp line, then the rotating
+      // micro-copy line — smallest/dimmest, bottom-most, never competing
+      // with the header. All three sit within the reserved footerZoneH.
       ctx.font = '600 20px "Inter", "Noto Sans SC", sans-serif';
       ctx.fillStyle = COLOR_GOLD;
-      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_CARD_H - PAD + 24);
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴 · fandom.justlikekatie.com', cx, EXPORT_CARD_H - 96);
+
+      ctx.font = '400 17px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = COLOR_TEXT_DIM;
+      ctx.fillText(editionStamp.text, cx, EXPORT_CARD_H - 68);
+
+      ctx.font = '400 15px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = hexToRgba(COLOR_TEXT_DARKER, 0.85);
+      ctx.fillText(microCopy, cx, EXPORT_CARD_H - 40);
 
       return canvas;
     }
@@ -1096,6 +1191,10 @@
       var cols = useSix ? 3 : 2;
       var rows = 2;
       var results = allResults.slice(0, cols * rows);
+      var dateStr = payload.date || new Date().toISOString().slice(0, 10);
+      var editionStamp = buildEditionStampLine(dateStr, actor, vibe, payload.rankIndex, payload.totalBatches);
+      var editionCode = formatEditionCode(dateStr, editionStamp.rankNum);
+      var microCopy = pickMicroCopyLine(dateStr);
 
       await loadExportCardFonts();
 
@@ -1135,6 +1234,12 @@
       ctx.fillStyle = colors.gold;
       ctx.fillText('今日氛围图鉴', cx, y);
 
+      // 1b. Edition catalog code — small, letter-spaced/monospace, gold accent.
+      y += 22;
+      ctx.font = '600 13px "Inter", monospace';
+      ctx.fillStyle = hexToRgba(colors.gold, 0.8);
+      drawLetterSpacedText(ctx, editionCode, cx, y, 2);
+
       // 2. Title (slightly smaller than the full card's — this is a teaser)
       y += 48;
       ctx.font = '700 38px "Noto Sans SC", "Inter", sans-serif';
@@ -1161,7 +1266,7 @@
       // 5. Image grid (2x3 or 2x2 fallback) — reserve the same footer zone
       // used by the full card (source line + brand signature), then fit the
       // grid into the remaining vertical room.
-      var footerZoneH = 118;
+      var footerZoneH = 150;
       var gridTop = y + 34;
       var gridBottom = EXPORT_TEASER_H - footerZoneH;
       var gridGap = 12;
@@ -1202,12 +1307,40 @@
         ctx.fillText(sourcesText, cx, sourcesLineY);
       }
 
-      // 7. Footer/brand signature — same copy as the full card.
+      // 7. Footer stack: brand line, edition-stamp line, then the rotating
+      // micro-copy line — smaller/dimmer, bottom-most, same convention as
+      // the full card.
       ctx.font = '600 18px "Inter", "Noto Sans SC", sans-serif';
       ctx.fillStyle = colors.gold;
-      ctx.fillText('🔮 Vibe Guide · 氛围图鉴', cx, EXPORT_TEASER_H - PAD + 22);
+      ctx.fillText('🔮 Vibe Guide · 氛围图鉴 · fandom.justlikekatie.com', cx, EXPORT_TEASER_H - 84);
+
+      ctx.font = '400 15px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = colors.textDim;
+      ctx.fillText(editionStamp.text, cx, EXPORT_TEASER_H - 60);
+
+      ctx.font = '400 14px "Inter", "Noto Sans SC", sans-serif';
+      ctx.fillStyle = hexToRgba(colors.textDarker, 0.85);
+      ctx.fillText(microCopy, cx, EXPORT_TEASER_H - 34);
 
       return canvas;
+    }
+
+    // Draws horizontally-centered text with manual letter-spacing (canvas has
+    // no native letter-spacing in the browsers we support here) — used for
+    // the small monospace edition catalog code so it reads as a stamped code
+    // rather than plain body text.
+    function drawLetterSpacedText(ctx, text, cx, y, spacing) {
+      var chars = String(text).split('');
+      var widths = chars.map(function (ch) { return ctx.measureText(ch).width; });
+      var totalW = widths.reduce(function (a, b) { return a + b; }, 0) + spacing * (chars.length - 1);
+      var prevAlign = ctx.textAlign;
+      ctx.textAlign = 'left';
+      var x = cx - totalW / 2;
+      for (var i = 0; i < chars.length; i++) {
+        ctx.fillText(chars[i], x, y);
+        x += widths[i] + spacing;
+      }
+      ctx.textAlign = prevAlign;
     }
 
     // Converts a hex color (#rrggbb) to an rgba() string with the given alpha.
@@ -1242,11 +1375,18 @@
       shareCardInFlight = true;
       showToast('正在生成分享卡……');
 
+      var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
+      var hasRank = typeof sourceState.rankIndex === 'number' && Array.isArray(sourceState.rankedBatches) && sourceState.rankedBatches.length > 0;
+      var rankNum = hasRank ? (sourceState.rankIndex + 1) : 0;
+
       try {
         var canvas = await renderExportCanvas({
           actor: sourceState.actor,
           vibe: sourceState.vibe,
-          chosen: sourceState.chosen
+          chosen: sourceState.chosen,
+          date: dateStr,
+          rankIndex: hasRank ? sourceState.rankIndex : null,
+          totalBatches: hasRank ? sourceState.rankedBatches.length : null
         }, variant);
 
         var blob = await new Promise(function (resolve) {
@@ -1259,9 +1399,7 @@
           return;
         }
 
-        var dateStr = sourceState.date || new Date().toISOString().slice(0, 10);
-        var fileSuffix = variant === 'teaser' ? '-teaser' : '';
-        var fileName = 'today-vibe-' + dateStr + fileSuffix + '.png';
+        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant);
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
