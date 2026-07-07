@@ -33,9 +33,21 @@ const ALL_ACTOR_NAME_TOKENS = ACTOR_PACKS.flatMap((a) =>
   [a.name, a.shortName].filter((n) => typeof n === "string" && n.length >= 2)
 );
 
+// Additional known co-stars NOT in our own tracked roster (ACTOR_PACKS is app-facing
+// data for actors we build full vibe pages for — this list is purely for the negative
+// filter above, so it doesn't belong in ACTOR_PACKS itself). Added only when there's
+// concrete, documented recurring drift, not as a speculative taxonomy:
+//   - 成毅: confirmed contamination case (QA screenshot) — appeared as the bold-text-
+//     labeled featured subject of a tile in a 刘学义 "破碎感/古装" batch, a frequent
+//     costume-drama/权谋-genre co-star whose name adjacency causes drift into our
+//     roster actors' searches.
+const KNOWN_COSTAR_DRIFT_NAMES = ["成毅"];
+
+const ALL_KNOWN_PERSON_NAME_TOKENS = [...ALL_ACTOR_NAME_TOKENS, ...KNOWN_COSTAR_DRIFT_NAMES];
+
 function mentionsOtherActor(text, subjectToken) {
   if (!text) return false;
-  return ALL_ACTOR_NAME_TOKENS.some(
+  return ALL_KNOWN_PERSON_NAME_TOKENS.some(
     (tok) => tok !== subjectToken && text.includes(tok) && !text.includes(subjectToken)
   );
 }
