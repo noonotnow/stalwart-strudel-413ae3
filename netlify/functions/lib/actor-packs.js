@@ -241,7 +241,9 @@ export const ACTOR_PACKS = [
           "张凌赫 白大褂 中医 帅",
           "张凌赫 何苏叶 剧照 单人",
           "张凌赫 医生陷阱 个人",
-          "张凌赫 白大褂 帅气 单人"
+          "张凌赫 白大褂 帅气 单人",
+          "Zhang Linghe doctor handsome",
+          "张凌赫 doctor white coat"
         ],
         "shareFragment": "凌赫当医生，诊断结果：美貌加重，预后不良",
         "mjPrompt": ""
