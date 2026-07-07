@@ -19,8 +19,8 @@ export async function handler(event) {
 
   const subjectToken = q.split(/\s+/)[0] || "";
   const NON_SUBJECT_KEYWORDS = [
-    "行政区划", "地形图", "地图库", "省份地图", "中国地图", "世界地图", "地图查询",
-    "画像", "肖像画", "国画", "皇帝", "帝王", "古代人物画", "水墨画",
+    "中国地图", "世界地图", "地形图", "省份地图", "行政区划地图", "地图查询", "地图库",
+    "皇帝画像", "帝王画像", "古代帝王画像", "历代帝王图", "历史人物画像", "肖像画", "国画欣赏", "水墨人物画",
     "app store", "应用商店", "apple music", "google play", "下载量", "好评率", "应用截图", "app截图"
   ];
   const ALL_ACTOR_NAME_TOKENS_STR = "刘宇宁,宇宁,刘学义,学义,宋威龙,威龙,张凌赫,凌赫,敖瑞鹏,瑞鹏,丁禹兮,禹兮,王鹤棣,鹤棣,王以纶,以纶".split(",");
@@ -28,7 +28,6 @@ export async function handler(event) {
   const rejections = [];
   let noTitle = 0, noThumb = 0, adTitle = 0, placeholder = 0, commerce = 0, nonSubject = 0, otherActor = 0, dupe = 0, kept = 0;
   const seenThumbs = new Set();
-  const seenTitles = new Set();
   for (const item of raw) {
     const title = item.title || "";
     const thumb = item.thumbnail || "";
@@ -40,10 +39,8 @@ export async function handler(event) {
     if (NON_SUBJECT_KEYWORDS.some(k => lowerTitle.includes(k.toLowerCase()))) { nonSubject++; rejections.push({stage:"non_subject", title}); continue; }
     if (ALL_ACTOR_NAME_TOKENS_STR.some(tok => tok !== subjectToken && title.includes(tok) && !title.includes(subjectToken))) { otherActor++; rejections.push({stage:"other_actor", title}); continue; }
     const thumbKey = thumb.split("?")[0].toLowerCase();
-    const titleKey = title.trim().toLowerCase();
     if (thumbKey && seenThumbs.has(thumbKey)) { dupe++; continue; }
-    if (titleKey && seenTitles.has(titleKey)) { dupe++; continue; }
-    seenThumbs.add(thumbKey); seenTitles.add(titleKey);
+    seenThumbs.add(thumbKey);
     kept++;
   }
 

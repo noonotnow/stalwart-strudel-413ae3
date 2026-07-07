@@ -6,9 +6,14 @@ import { ACTOR_PACKS } from "./lib/actor-packs.js";
 // paintings/portraits of unrelated figures, and app-store/screenshot tiles (e.g.
 // an Apple Music app icon surfacing for an "眼镜"/glasses query). Text-heuristic
 // only — this is not image content recognition, just keyword rejection.
+// Note: bare terms like "皇帝"/"帝王" are deliberately NOT included — costume-drama
+// titles legitimately describe an actor's "emperor"/"imperial" role or styling (e.g.
+// "刘学义 草原帝王造型"), so a bare keyword would false-positive on real subject
+// content. Only compound phrases that specifically indicate an actual painting/
+// portrait artifact (not a drama role) are used here.
 const NON_SUBJECT_KEYWORDS = [
-  "行政区划", "地形图", "地图库", "省份地图", "中国地图", "世界地图", "地图查询",
-  "画像", "肖像画", "国画", "皇帝", "帝王", "古代人物画", "水墨画",
+  "中国地图", "世界地图", "地形图", "省份地图", "行政区划地图", "地图查询", "地图库",
+  "皇帝画像", "帝王画像", "古代帝王画像", "历代帝王图", "历史人物画像", "肖像画", "国画欣赏", "水墨人物画",
   "app store", "应用商店", "apple music", "google play", "下载量", "好评率", "应用截图", "app截图"
 ];
 
@@ -48,18 +53,19 @@ function passesPerItemSubjectFilter(item, subjectToken) {
   return true;
 }
 
-// De-duplicates a result list by normalized thumbnail URL and by normalized title,
-// so the same image (e.g. a duplicated ad banner) can't appear twice in one grid.
+// De-duplicates a result list by normalized thumbnail URL only — NOT by title.
+// Search engines (esp. Google Images) legitimately return many distinct photos
+// from the same source article/gallery sharing an identical title string, so
+// title-based dedup would wrongly collapse a large fraction of genuine distinct
+// images down to one. Thumbnail URL uniquely identifies the actual image, so
+// that's the correct de-dup key (catches real cases like the same ad banner
+// image appearing twice).
 function dedupeResults(items) {
   const seenThumbs = new Set();
-  const seenTitles = new Set();
   return items.filter((r) => {
     const thumbKey = (r.thumbnail || "").split("?")[0].toLowerCase();
-    const titleKey = (r.title || "").trim().toLowerCase();
     if (thumbKey && seenThumbs.has(thumbKey)) return false;
-    if (titleKey && titleKey.length > 0 && seenTitles.has(titleKey)) return false;
     if (thumbKey) seenThumbs.add(thumbKey);
-    if (titleKey) seenTitles.add(titleKey);
     return true;
   });
 }
