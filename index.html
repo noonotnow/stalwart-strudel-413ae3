@@ -514,14 +514,18 @@
       if (showCaptions === undefined) showCaptions = true;
       gridEl.innerHTML = "";
 
-      if (!results.length) {
+      // Display cap: the pipeline may return up to 18 candidates (for filtering
+      // headroom and future pagination), but the 3×3 grid only renders the top 9.
+      const displayResults = results.slice(0, 9);
+
+      if (!displayResults.length) {
         statusEl.textContent = "这组咒语今天装死，去外面继续搜。";
         return;
       }
 
       statusEl.textContent = "";
 
-      results.forEach((item) => {
+      displayResults.forEach((item) => {
         const card = document.createElement("div");
         card.className = "preview-image-card";
 
