@@ -38,7 +38,7 @@ export async function handler(event) {
     if (["favicon","static/baike","baike.png","x320.png","/logo.","_logo.","-logo.","/logos/"].some(p => thumb.toLowerCase().includes(p))) { placeholder++; continue; }
     if (NON_SUBJECT_KEYWORDS.some(k => lowerTitle.includes(k.toLowerCase()))) { nonSubject++; rejections.push({stage:"non_subject", title}); continue; }
     if (ALL_ACTOR_NAME_TOKENS_STR.some(tok => tok !== subjectToken && title.includes(tok) && !title.includes(subjectToken))) { otherActor++; rejections.push({stage:"other_actor", title}); continue; }
-    const thumbKey = thumb.split("?")[0].toLowerCase();
+    const thumbKey = thumb;
     if (thumbKey && seenThumbs.has(thumbKey)) { dupe++; continue; }
     seenThumbs.add(thumbKey);
     kept++;

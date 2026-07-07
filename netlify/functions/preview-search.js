@@ -53,17 +53,17 @@ function passesPerItemSubjectFilter(item, subjectToken) {
   return true;
 }
 
-// De-duplicates a result list by normalized thumbnail URL only — NOT by title.
-// Search engines (esp. Google Images) legitimately return many distinct photos
-// from the same source article/gallery sharing an identical title string, so
-// title-based dedup would wrongly collapse a large fraction of genuine distinct
-// images down to one. Thumbnail URL uniquely identifies the actual image, so
-// that's the correct de-dup key (catches real cases like the same ad banner
-// image appearing twice).
+// De-duplicates a result list by exact thumbnail URL only — NOT by title, and NOT
+// by a truncated/query-stripped URL. Some providers (notably Google Images via
+// SerpAPI) encode the actual unique-image identifier *inside* the query string of
+// a shared thumbnail-proxy host (e.g. gstatic.com/images?q=tbn:<hash>), so
+// stripping query params before comparing would wrongly treat every distinct
+// image as a duplicate of the first. Title-based dedup is also intentionally
+// avoided — many distinct real photos share an identical source-article title.
 function dedupeResults(items) {
   const seenThumbs = new Set();
   return items.filter((r) => {
-    const thumbKey = (r.thumbnail || "").split("?")[0].toLowerCase();
+    const thumbKey = r.thumbnail || "";
     if (thumbKey && seenThumbs.has(thumbKey)) return false;
     if (thumbKey) seenThumbs.add(thumbKey);
     return true;
