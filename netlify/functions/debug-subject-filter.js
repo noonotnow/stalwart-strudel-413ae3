@@ -51,6 +51,7 @@ export async function handler(event) {
       query: q, engine, rawCount: raw.length,
       counts: { noThumb, adTitle, placeholder, nonSubject, otherActor, dupe, kept },
       sampleTitles: raw.slice(0, 15).map(r => r.title),
+      sampleThumbs: raw.slice(0, 15).map(r => r.thumbnail),
       rejectionSamples: rejections.slice(0, 20)
     })
   };
