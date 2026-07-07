@@ -73,17 +73,41 @@ function mentionsOtherActor(text, subjectToken) {
   );
 }
 
+// Surname-collision namesake guard: catches a different, unrelated real person who
+// happens to share the subject's surname (e.g. a query for "刘学义" pulling in a
+// result that's actually about "刘宇" or "刘天成" — a K-pop idol or unrelated
+// person, not a co-star, not in any roster, purely a keyword/surname collision on
+// a generic query word like "眼镜"/glasses). Confirmed live: "刘学义 西装 眼镜"
+// pulled a 刘宇(ENHYPEN) bilibili result, "刘学义 眼镜 现代" pulled a
+// 刘宝/刘天成 sohu result — neither mentions the subject at all.
+//
+// Deliberately conservative: only fires when the subject's own name is COMPLETELY
+// absent from the text (so it never rejects legitimate results that mention both
+// people, or generic captions that don't name anyone), and only flags a same-
+// surname 2-3 char token that isn't a prefix/substring relationship with the
+// subject's own name (so partial matches on the subject's own name never trip it).
+function mentionsUnrelatedNamesake(text, subjectToken) {
+  if (!text || !subjectToken || subjectToken.length < 2) return false;
+  if (text.includes(subjectToken)) return false; // subject IS named — not a collision case
+  const surname = subjectToken[0];
+  const re = new RegExp(surname + "[\\u4e00-\\u9fa5]{1,2}", "g");
+  const matches = text.match(re) || [];
+  return matches.some((m) => m !== subjectToken && !m.startsWith(subjectToken) && !subjectToken.startsWith(m));
+}
+
 // Per-item subject-relevance filter: negative-only (never requires a positive name
 // mention, since most legitimate fan-photo titles are generic and don't repeat the
 // actor's name) but rejects items that show a concrete contamination signal — the
-// title/description names a different known actor, matches an obvious non-subject-
-// content keyword, or is a reference/encyclopedia page whose own title doesn't name
-// the subject. Applied to every item in every batch, regardless of which provider/
-// engine produced it or whether the batch-level guard below passed.
+// title/description names a different known actor, a different same-surname
+// namesake, matches an obvious non-subject-content keyword, or is a reference/
+// encyclopedia page whose own title doesn't name the subject. Applied to every item
+// in every batch, regardless of which provider/engine produced it or whether the
+// batch-level guard below passed.
 function passesPerItemSubjectFilter(item, subjectToken) {
   const text = `${item.title || ""} ${item.description || ""}`;
   if (isNonSubjectContent(text)) return false;
   if (subjectToken && mentionsOtherActor(text, subjectToken)) return false;
+  if (subjectToken && mentionsUnrelatedNamesake(text, subjectToken)) return false;
   if (subjectToken && isReferenceDomain(item.source) && !text.includes(subjectToken)) return false;
   return true;
 }
