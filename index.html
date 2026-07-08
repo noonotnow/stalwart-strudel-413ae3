@@ -1151,13 +1151,14 @@
       return String(base).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'star';
     }
 
-    // Builds the "vibe-guide_<date>_<actor-slug>_ep<NN>[_teaser].png" filename.
+    // Builds the "vibe-guide_<date>_<actor-slug>_<tier>_ep<NN>[_teaser].png" filename.
     // `rankNum` follows the same 1-based-or-0 convention as formatEditionCode.
-    function buildExportFilename(dateStr, actor, rankNum, variant) {
+    function buildExportFilename(dateStr, actor, rankNum, variant, tier) {
       var slug = actorFilenameSlug(actor);
       var nn = pad2(rankNum);
+      var tierTag = (tier && tier !== 'standard') ? ('_' + tier) : '';
       var suffix = variant === 'teaser' ? '_teaser' : '';
-      return 'vibe-guide_' + dateStr + '_' + slug + '_ep' + nn + suffix + '.png';
+      return 'vibe-guide_' + dateStr + '_' + slug + tierTag + '_ep' + nn + suffix + '.png';
     }
 
     // Builds the two-line footer stack text (brand line is drawn separately;
@@ -1659,7 +1660,7 @@
           return;
         }
 
-        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant);
+        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant, tier);
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
