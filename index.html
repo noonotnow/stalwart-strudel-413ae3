@@ -1465,8 +1465,9 @@
       ctx.fillStyle = hexToRgba(COLOR_TEXT_DARKER, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_CARD_H - 40);
 
-      // 10. Tier badge overlay (top-right corner)
-      await compositeBadge(canvas, ctx, tier);
+      // 10. Tier badge overlay (top-right corner) — uses badgeTier from payload
+      // so Star of the Day feature designation takes priority over edition tier.
+      await compositeBadge(canvas, ctx, payload.badgeTier || tier);
 
       return canvas;
     }
@@ -1618,8 +1619,9 @@
       ctx.fillStyle = hexToRgba(colors.textDarker, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_TEASER_H - 34);
 
-      // 8. Tier badge overlay (top-right corner)
-      await compositeBadge(canvas, ctx, tier);
+      // 8. Tier badge overlay (top-right corner) — uses badgeTier from payload
+      // so Star of the Day feature designation takes priority over edition tier.
+      await compositeBadge(canvas, ctx, payload.badgeTier || tier);
 
       return canvas;
     }
@@ -1665,6 +1667,7 @@
     var shareCardInFlight = false;
     async function handleSaveShareCard(variant, sourceState) {
       variant = variant || 'full';
+      var isStarOfDay = !sourceState; // no explicit source = daily star flow
       sourceState = sourceState || dailyGridState;
       if (shareCardInFlight) return;
       if (!sourceState.chosen || !sourceState.actor || !sourceState.vibe) {
@@ -1679,6 +1682,13 @@
       var rankNum = hasRank ? (sourceState.rankIndex + 1) : 0;
       var tier = classifyEditionTier(sourceState.chosen);
 
+      // Two-layer designation: feature (star-of-day) + edition tier.
+      // Star of the Day badge takes priority in the overlay; filename encodes both.
+      var badgeTier = isStarOfDay ? 'star-of-day' : tier;
+      var filenameTier = isStarOfDay
+        ? (tier !== 'standard' ? 'star-of-day_' + tier : 'star-of-day')
+        : tier;
+
       try {
         var canvas = await renderExportCanvas({
           actor: sourceState.actor,
@@ -1686,7 +1696,8 @@
           chosen: sourceState.chosen,
           date: dateStr,
           rankIndex: hasRank ? sourceState.rankIndex : null,
-          totalBatches: hasRank ? sourceState.rankedBatches.length : null
+          totalBatches: hasRank ? sourceState.rankedBatches.length : null,
+          badgeTier: badgeTier
         }, variant);
 
         var blob = await new Promise(function (resolve) {
@@ -1699,7 +1710,7 @@
           return;
         }
 
-        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant, tier);
+        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant, filenameTier);
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
