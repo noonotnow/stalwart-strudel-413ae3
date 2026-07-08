@@ -907,6 +907,39 @@
       });
     }
 
+    // Badge path lookup per tier — maps tier IDs to their SVG badge asset.
+    // Only non-standard tiers have badges; standard returns null.
+    var TIER_BADGE_PATHS = {
+      'star-of-day': '/assets/cards/badges/star-of-day.svg',
+      'misprint': '/assets/cards/badges/misprint.svg',
+      'legendary': '/assets/cards/badges/legendary.svg'
+    };
+    var BADGE_SIZE = 48;
+    var BADGE_OFFSET = 16;
+
+    // Loads a local image (SVG or PNG) from same origin. Resolves to Image or null.
+    function loadLocalImage(path) {
+      return new Promise(function (resolve) {
+        if (!path) { resolve(null); return; }
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { resolve(null); };
+        img.src = path;
+      });
+    }
+
+    // Composites the tier badge onto an already-rendered export canvas.
+    // Placed top-right with padding. No-op for standard tier or if badge fails to load.
+    async function compositeBadge(canvas, ctx, tier) {
+      var badgePath = TIER_BADGE_PATHS[tier];
+      if (!badgePath) return;
+      var badgeImg = await loadLocalImage(badgePath);
+      if (!badgeImg) return;
+      var x = canvas.width - BADGE_SIZE - BADGE_OFFSET;
+      var y = BADGE_OFFSET;
+      ctx.drawImage(badgeImg, x, y, BADGE_SIZE, BADGE_SIZE);
+    }
+
     // Draws `img` cover-fit (crop to fill, preserve aspect) into the rounded
     // rect (x, y, w, h) on ctx, radius `r`.
     function drawCoverImageRounded(ctx, img, x, y, w, h, r) {
@@ -1432,6 +1465,9 @@
       ctx.fillStyle = hexToRgba(COLOR_TEXT_DARKER, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_CARD_H - 40);
 
+      // 10. Tier badge overlay (top-right corner)
+      await compositeBadge(canvas, ctx, tier);
+
       return canvas;
     }
 
@@ -1581,6 +1617,9 @@
       ctx.font = '400 14px "Inter", "Noto Sans SC", sans-serif';
       ctx.fillStyle = hexToRgba(colors.textDarker, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_TEASER_H - 34);
+
+      // 8. Tier badge overlay (top-right corner)
+      await compositeBadge(canvas, ctx, tier);
 
       return canvas;
     }
