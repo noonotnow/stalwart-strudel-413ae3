@@ -1245,6 +1245,11 @@
     // "Standard" edition is meant to represent regardless of which provider
     // happened to source it.
     function classifyEditionTier(chosen) {
+      // Manual override: if a batch is explicitly flagged legendary, honor it
+      // unconditionally. This supports Phase 1 manual curation — flag batches
+      // you love, codify heuristics later once patterns emerge.
+      if (chosen && chosen.legendary) return 'legendary';
+
       var count = (chosen && typeof chosen.count === 'number')
         ? chosen.count
         : (chosen && Array.isArray(chosen.results) ? chosen.results.length : 0);
@@ -1682,9 +1687,9 @@
       var rankNum = hasRank ? (sourceState.rankIndex + 1) : 0;
       var tier = classifyEditionTier(sourceState.chosen);
 
-      // Two-layer designation: feature (star-of-day) + edition tier.
-      // Star of the Day badge takes priority in the overlay; filename encodes both.
-      var badgeTier = isStarOfDay ? 'star-of-day' : tier;
+      // Badge overlay stays edition-tier-only (collector logic is pure).
+      // Star of the Day is a feature designation — encoded in filename only.
+      var badgeTier = tier;
       var filenameTier = isStarOfDay
         ? (tier !== 'standard' ? 'star-of-day_' + tier : 'star-of-day')
         : tier;
