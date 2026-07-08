@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "description": "Visual identity tokens for the status card tier system. Consumed by the export renderer to differentiate Standard, Misprint, and Legendary editions.",
+  "tiers": {
+    "standard": {
+      "label": { "zh": "标准版", "en": "Standard" },
+      "badge": null,
+      "border": { "color": "#c9a96e", "width": 2, "style": "solid" },
+      "glow": { "color": "#c9a96e", "radius": 24, "opacity": 0.08 },
+      "accent": "#c9a96e",
+      "codeTag": null
+    },
+    "star-of-day": {
+      "label": { "zh": "今日之星", "en": "Star of the Day" },
+      "badge": "../badges/star-of-day.svg",
+      "border": { "color": "#c9a96e", "width": 3, "style": "solid" },
+      "glow": { "color": "#c9a96e", "radius": 32, "opacity": 0.16 },
+      "accent": "#c9a96e",
+      "codeTag": null
+    },
+    "misprint": {
+      "label": { "zh": "稀有错版", "en": "Misprint" },
+      "badge": "../badges/misprint.svg",
+      "border": { "color": "#8b5cf6", "width": 2, "style": "dashed" },
+      "glow": { "color": "#8b5cf6", "radius": 20, "opacity": 0.12 },
+      "accent": "#8b5cf6",
+      "codeTag": "misprint"
+    },
+    "legendary": {
+      "label": { "zh": "传说级", "en": "Legendary" },
+      "badge": "../badges/legendary.svg",
+      "border": { "color": "#f59e0b", "width": 3, "style": "solid" },
+      "glow": { "color": "#f59e0b", "radius": 36, "opacity": 0.2 },
+      "accent": "#f59e0b",
+      "codeTag": "relic-class"
+    }
+  },
+  "badgePlacement": {
+    "position": "top-right",
+    "offsetX": 16,
+    "offsetY": 16,
+    "size": 48
+  }
+}

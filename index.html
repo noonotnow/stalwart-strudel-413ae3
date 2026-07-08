@@ -907,6 +907,39 @@
       });
     }
 
+    // Badge path lookup per tier — maps tier IDs to their SVG badge asset.
+    // Only non-standard tiers have badges; standard returns null.
+    var TIER_BADGE_PATHS = {
+      'star-of-day': '/assets/cards/badges/star-of-day.svg',
+      'misprint': '/assets/cards/badges/misprint.svg',
+      'legendary': '/assets/cards/badges/legendary.svg'
+    };
+    var BADGE_SIZE = 48;
+    var BADGE_OFFSET = 16;
+
+    // Loads a local image (SVG or PNG) from same origin. Resolves to Image or null.
+    function loadLocalImage(path) {
+      return new Promise(function (resolve) {
+        if (!path) { resolve(null); return; }
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { resolve(null); };
+        img.src = path;
+      });
+    }
+
+    // Composites the tier badge onto an already-rendered export canvas.
+    // Placed top-right with padding. No-op for standard tier or if badge fails to load.
+    async function compositeBadge(canvas, ctx, tier) {
+      var badgePath = TIER_BADGE_PATHS[tier];
+      if (!badgePath) return;
+      var badgeImg = await loadLocalImage(badgePath);
+      if (!badgeImg) return;
+      var x = canvas.width - BADGE_SIZE - BADGE_OFFSET;
+      var y = BADGE_OFFSET;
+      ctx.drawImage(badgeImg, x, y, BADGE_SIZE, BADGE_SIZE);
+    }
+
     // Draws `img` cover-fit (crop to fill, preserve aspect) into the rounded
     // rect (x, y, w, h) on ctx, radius `r`.
     function drawCoverImageRounded(ctx, img, x, y, w, h, r) {
@@ -1151,13 +1184,14 @@
       return String(base).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'star';
     }
 
-    // Builds the "vibe-guide_<date>_<actor-slug>_ep<NN>[_teaser].png" filename.
+    // Builds the "vibe-guide_<date>_<actor-slug>_<tier>_ep<NN>[_teaser].png" filename.
     // `rankNum` follows the same 1-based-or-0 convention as formatEditionCode.
-    function buildExportFilename(dateStr, actor, rankNum, variant) {
+    function buildExportFilename(dateStr, actor, rankNum, variant, tier) {
       var slug = actorFilenameSlug(actor);
       var nn = pad2(rankNum);
+      var tierTag = (tier && tier !== 'standard') ? ('_' + tier) : '';
       var suffix = variant === 'teaser' ? '_teaser' : '';
-      return 'vibe-guide_' + dateStr + '_' + slug + '_ep' + nn + suffix + '.png';
+      return 'vibe-guide_' + dateStr + '_' + slug + tierTag + '_ep' + nn + suffix + '.png';
     }
 
     // Builds the two-line footer stack text (brand line is drawn separately;
@@ -1211,6 +1245,11 @@
     // "Standard" edition is meant to represent regardless of which provider
     // happened to source it.
     function classifyEditionTier(chosen) {
+      // Manual override: if a batch is explicitly flagged legendary, honor it
+      // unconditionally. This supports Phase 1 manual curation — flag batches
+      // you love, codify heuristics later once patterns emerge.
+      if (chosen && chosen.legendary) return 'legendary';
+
       var count = (chosen && typeof chosen.count === 'number')
         ? chosen.count
         : (chosen && Array.isArray(chosen.results) ? chosen.results.length : 0);
@@ -1431,6 +1470,10 @@
       ctx.fillStyle = hexToRgba(COLOR_TEXT_DARKER, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_CARD_H - 40);
 
+      // 10. Tier badge overlay (top-right corner) — uses badgeTier from payload
+      // so Star of the Day feature designation takes priority over edition tier.
+      await compositeBadge(canvas, ctx, payload.badgeTier || tier);
+
       return canvas;
     }
 
@@ -1581,6 +1624,10 @@
       ctx.fillStyle = hexToRgba(colors.textDarker, 0.85);
       ctx.fillText(microCopy, cx, EXPORT_TEASER_H - 34);
 
+      // 8. Tier badge overlay (top-right corner) — uses badgeTier from payload
+      // so Star of the Day feature designation takes priority over edition tier.
+      await compositeBadge(canvas, ctx, payload.badgeTier || tier);
+
       return canvas;
     }
 
@@ -1625,6 +1672,7 @@
     var shareCardInFlight = false;
     async function handleSaveShareCard(variant, sourceState) {
       variant = variant || 'full';
+      var isStarOfDay = !sourceState; // no explicit source = daily star flow
       sourceState = sourceState || dailyGridState;
       if (shareCardInFlight) return;
       if (!sourceState.chosen || !sourceState.actor || !sourceState.vibe) {
@@ -1639,6 +1687,13 @@
       var rankNum = hasRank ? (sourceState.rankIndex + 1) : 0;
       var tier = classifyEditionTier(sourceState.chosen);
 
+      // Badge overlay stays edition-tier-only (collector logic is pure).
+      // Star of the Day is a feature designation — encoded in filename only.
+      var badgeTier = tier;
+      var filenameTier = isStarOfDay
+        ? (tier !== 'standard' ? 'star-of-day_' + tier : 'star-of-day')
+        : tier;
+
       try {
         var canvas = await renderExportCanvas({
           actor: sourceState.actor,
@@ -1646,7 +1701,8 @@
           chosen: sourceState.chosen,
           date: dateStr,
           rankIndex: hasRank ? sourceState.rankIndex : null,
-          totalBatches: hasRank ? sourceState.rankedBatches.length : null
+          totalBatches: hasRank ? sourceState.rankedBatches.length : null,
+          badgeTier: badgeTier
         }, variant);
 
         var blob = await new Promise(function (resolve) {
@@ -1659,7 +1715,7 @@
           return;
         }
 
-        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant);
+        var fileName = buildExportFilename(dateStr, sourceState.actor, rankNum, variant, filenameTier);
         var file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'image/png' }) : null;
 
         var shared = false;
