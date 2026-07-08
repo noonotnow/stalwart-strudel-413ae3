@@ -373,6 +373,26 @@
     function tumblrUrl(q){ return 'https://www.tumblr.com/search/'+encodeURIComponent(q); }
     function googleUrl(q){ return 'https://www.google.com/search?q='+encodeURIComponent(q)+'&tbm=isch'; }
 
+    // --- Engagement metrics (fire-and-forget, never blocks UI) ---
+    // Builds a stable batch key from available state for counter tracking.
+    function buildBatchKey(sourceState) {
+      var date = (sourceState && sourceState.date) || '';
+      var actorId = (sourceState && sourceState.actorId) || (sourceState && sourceState.actor && sourceState.actor.id) || '';
+      var vibeIdx = (sourceState && typeof sourceState.vibeIdx === 'number') ? sourceState.vibeIdx : '';
+      var rankIndex = (sourceState && typeof sourceState.rankIndex === 'number') ? sourceState.rankIndex : 0;
+      return [date, actorId, vibeIdx, rankIndex].join(':');
+    }
+    function trackBatchEvent(batchKey, event) {
+      if (!batchKey) return;
+      try {
+        fetch('/.netlify/functions/batch-metrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchKey: batchKey, event: event })
+        });
+      } catch (e) { /* fire-and-forget */ }
+    }
+
     // getShanghaiDateString/hashDateString/getTodaysRandom used to live here so the
     // browser could compute "today's" actor/vibe pick itself. That logic (and the
     // Asia/Shanghai day boundary) now lives server-side in
@@ -1728,6 +1748,7 @@
             });
             shared = true;
             showToast('分享成功 ✓');
+            trackBatchEvent(buildBatchKey(sourceState), 'share');
           } catch (shareErr) {
             // User cancelled the share sheet, or the platform rejected it —
             // fall through to the download fallback below rather than
@@ -1749,6 +1770,7 @@
             : tier === 'legendary' ? '已保存传说级错版 · Legendary save'
             : '分享卡已保存 ✓';
           showToast(savedToast);
+          trackBatchEvent(buildBatchKey(sourceState), 'save');
         }
       } catch (err) {
         showToast('分享卡生成失败，再试一次？');
@@ -1929,6 +1951,12 @@
         var pc=document.getElementById('preview-copy'); if(pc)pc.addEventListener('click',copyActiveQuery);
         var po=document.getElementById('preview-open'); if(po)po.addEventListener('click',function(){var target=document.getElementById('external-search-section'); if(target)target.scrollIntoView({behavior:'smooth',block:'start'});});
         var psc=document.getElementById('preview-share-card'); if(psc)psc.addEventListener('click',function(){ handleSaveShareCard('full', previewExportState); });
+        // Track external search clicks (platform links) for engagement metrics
+        document.querySelectorAll('.platform-link').forEach(function(el) {
+          el.addEventListener('click', function() {
+            trackBatchEvent(buildBatchKey(previewExportState), 'click');
+          });
+        });
       }
     }
 
