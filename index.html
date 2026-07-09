@@ -836,6 +836,10 @@
       h += '<button id="daily-grid-open-full" class="btn-secondary">打开完整页面<div class="en-helper" style="font-weight:400;">Open full page</div></button>';
       h += '<button id="daily-grid-share-card" class="btn-secondary">📤 保存完整分享卡<div class="en-helper" style="font-weight:400;">Save full share card</div></button>';
       h += '</div>';
+      h += '<div class="modal-cta-row" style="margin-top:6px;">';
+      h += '<button id="daily-grid-mark-misprint" class="btn-secondary" style="font-size:11px;opacity:0.7;">🫠 错版<div class="en-helper" style="font-weight:400;">Mark Misprint</div></button>';
+      h += '<button id="daily-grid-mark-legendary" class="btn-secondary" style="font-size:11px;opacity:0.7;">🔥 传说<div class="en-helper" style="font-weight:400;">Mark Legendary</div></button>';
+      h += '</div>';
       h += '</div>';
 
       overlay.innerHTML = h;
@@ -862,6 +866,20 @@
         if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(q).then(function(){ showToast('咒语已复制 ✓'); }); }
       });
       var shareCardBtn = document.getElementById('daily-grid-share-card'); if (shareCardBtn) shareCardBtn.addEventListener('click', function(){ handleSaveShareCard('full'); });
+      var markMisprintBtn = document.getElementById('daily-grid-mark-misprint'); if (markMisprintBtn) markMisprintBtn.addEventListener('click', function(){
+        if (dailyGridState.chosen) {
+          dailyGridState.chosen.misprint = true;
+          dailyGridState.chosen.legendary = false;
+          showToast('🫠 已标记错版 · Misprint tagged');
+        }
+      });
+      var markLegendaryBtn = document.getElementById('daily-grid-mark-legendary'); if (markLegendaryBtn) markLegendaryBtn.addEventListener('click', function(){
+        if (dailyGridState.chosen) {
+          dailyGridState.chosen.legendary = true;
+          dailyGridState.chosen.misprint = false;
+          showToast('🔥 已标记传说 · Legendary tagged');
+        }
+      });
 
       var statusEl = document.getElementById('daily-grid-status');
       var gridEl = document.getElementById('daily-grid-image-grid');
@@ -1265,10 +1283,11 @@
     // "Standard" edition is meant to represent regardless of which provider
     // happened to source it.
     function classifyEditionTier(chosen) {
-      // Manual override: if a batch is explicitly flagged legendary, honor it
-      // unconditionally. This supports Phase 1 manual curation — flag batches
-      // you love, codify heuristics later once patterns emerge.
+      // Manual overrides: explicit flags take priority over algorithmic
+      // classification. Legendary = "this is iconic". Misprint = "this is
+      // hilariously wrong" (wrong actor, back-of-head, content filter fail).
       if (chosen && chosen.legendary) return 'legendary';
+      if (chosen && chosen.misprint) return 'misprint';
 
       var count = (chosen && typeof chosen.count === 'number')
         ? chosen.count
@@ -1884,7 +1903,11 @@
       h+='<p id="preview-image-status" class="preview-status"></p>';
       h+='<div id="preview-image-grid" class="preview-image-grid"></div>';
       h+='<div id="preview-image-sources" class="modal-sources"></div>';
-      h+='<button id="preview-share-card" class="btn-secondary" style="width:100%;margin-top:4px;margin-bottom:16px;">📤 导出分享卡<div class="en-helper" style="font-weight:400;">Export share card</div></button>';
+      h+='<button id="preview-share-card" class="btn-secondary" style="width:100%;margin-top:4px;margin-bottom:4px;">📤 导出分享卡<div class="en-helper" style="font-weight:400;">Export share card</div></button>';
+      h+='<div style="display:flex;gap:8px;margin-bottom:16px;">';
+      h+='<button id="preview-mark-misprint" class="btn-secondary" style="flex:1;font-size:11px;opacity:0.7;">🫠 错版<div class="en-helper" style="font-weight:400;">Mark Misprint</div></button>';
+      h+='<button id="preview-mark-legendary" class="btn-secondary" style="flex:1;font-size:11px;opacity:0.7;">🔥 传说<div class="en-helper" style="font-weight:400;">Mark Legendary</div></button>';
+      h+='</div>';
       h+='</section>';
       h+='<div id="external-search-section" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">去外面继续搜 →<span class="en-helper-inline"> · Continue outside</span></div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">';
@@ -1951,6 +1974,20 @@
         var pc=document.getElementById('preview-copy'); if(pc)pc.addEventListener('click',copyActiveQuery);
         var po=document.getElementById('preview-open'); if(po)po.addEventListener('click',function(){var target=document.getElementById('external-search-section'); if(target)target.scrollIntoView({behavior:'smooth',block:'start'});});
         var psc=document.getElementById('preview-share-card'); if(psc)psc.addEventListener('click',function(){ handleSaveShareCard('full', previewExportState); });
+        var pMis=document.getElementById('preview-mark-misprint'); if(pMis)pMis.addEventListener('click',function(){
+          if (previewExportState.chosen) {
+            previewExportState.chosen.misprint = true;
+            previewExportState.chosen.legendary = false;
+            showToast('🫠 已标记错版 · Misprint tagged');
+          }
+        });
+        var pLeg=document.getElementById('preview-mark-legendary'); if(pLeg)pLeg.addEventListener('click',function(){
+          if (previewExportState.chosen) {
+            previewExportState.chosen.legendary = true;
+            previewExportState.chosen.misprint = false;
+            showToast('🔥 已标记传说 · Legendary tagged');
+          }
+        });
         // Track external search clicks (platform links) for engagement metrics
         document.querySelectorAll('.platform-link').forEach(function(el) {
           el.addEventListener('click', function() {
