@@ -37,8 +37,8 @@
   },
   "badgePlacement": {
     "position": "top-right",
-    "offsetX": 16,
-    "offsetY": 16,
-    "size": 48
+    "offsetX": 20,
+    "offsetY": 20,
+    "size": 80
   }
 }
