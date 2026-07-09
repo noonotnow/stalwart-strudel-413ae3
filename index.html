@@ -870,6 +870,9 @@
         if (dailyGridState.chosen) {
           dailyGridState.chosen.misprint = true;
           dailyGridState.chosen.legendary = false;
+          this.style.opacity = '1';
+          this.style.border = '1px solid #8b5cf6';
+          if (markLegendaryBtn) { markLegendaryBtn.style.opacity = '0.7'; markLegendaryBtn.style.border = ''; }
           showToast('🫠 已标记错版 · Misprint tagged');
         }
       });
@@ -877,6 +880,9 @@
         if (dailyGridState.chosen) {
           dailyGridState.chosen.legendary = true;
           dailyGridState.chosen.misprint = false;
+          this.style.opacity = '1';
+          this.style.border = '1px solid #f59e0b';
+          if (markMisprintBtn) { markMisprintBtn.style.opacity = '0.7'; markMisprintBtn.style.border = ''; }
           showToast('🔥 已标记传说 · Legendary tagged');
         }
       });
@@ -952,8 +958,8 @@
       'misprint': '/assets/cards/badges/misprint.svg',
       'legendary': '/assets/cards/badges/legendary.svg'
     };
-    var BADGE_SIZE = 48;
-    var BADGE_OFFSET = 16;
+    var BADGE_SIZE = 80;
+    var BADGE_OFFSET = 20;
 
     // Loads a local image (SVG or PNG) from same origin. Resolves to Image or null.
     function loadLocalImage(path) {
@@ -1978,6 +1984,9 @@
           if (previewExportState.chosen) {
             previewExportState.chosen.misprint = true;
             previewExportState.chosen.legendary = false;
+            this.style.opacity = '1';
+            this.style.border = '1px solid #8b5cf6';
+            if (pLeg) { pLeg.style.opacity = '0.7'; pLeg.style.border = ''; }
             showToast('🫠 已标记错版 · Misprint tagged');
           }
         });
@@ -1985,6 +1994,9 @@
           if (previewExportState.chosen) {
             previewExportState.chosen.legendary = true;
             previewExportState.chosen.misprint = false;
+            this.style.opacity = '1';
+            this.style.border = '1px solid #f59e0b';
+            if (pMis) { pMis.style.opacity = '0.7'; pMis.style.border = ''; }
             showToast('🔥 已标记传说 · Legendary tagged');
           }
         });
