@@ -155,6 +155,7 @@
       border-radius: 8px;
       overflow: hidden;
       background: var(--bg-recessed);
+      transition: transform 200ms ease-out, box-shadow 200ms ease-out;
     }
     .preview-image-card img {
       width: 100%;
@@ -172,6 +173,37 @@
       font-size: 0.8rem;
       padding: 4px 6px;
       opacity: 0.8;
+    }
+    /* Hover state - Desktop only */
+    @media (hover: hover) and (pointer: fine) {
+      .preview-image-card:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      }
+      .preview-image-card:hover .preview-image-caption {
+        color: var(--gold-text);
+      }
+    }
+    /* Focus state - WCAG 2.1 AA */
+    .preview-image-card:focus {
+      outline: 3px solid var(--gold);
+      outline-offset: 2px;
+    }
+    .preview-image-card:focus:not(:focus-visible) {
+      outline: none;
+    }
+    .preview-image-card:focus-visible {
+      outline: 3px solid var(--gold);
+      outline-offset: 2px;
+    }
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .preview-image-card {
+        transition: none;
+      }
+      .preview-image-card:hover {
+        transform: none;
+      }
     }
     .preview-status {
       font-size: 0.9rem;
@@ -548,6 +580,9 @@
       displayResults.forEach((item) => {
         const card = document.createElement("div");
         card.className = "preview-image-card";
+        card.tabIndex = 0;
+        card.setAttribute('role', 'link');
+        card.setAttribute('aria-label', item.title || query);
 
         const img = document.createElement("img");
         img.src = item.thumbnail;
@@ -567,6 +602,13 @@
           card.onclick = () =>
             window.open(item.link, "_blank", "noopener,noreferrer");
         }
+
+        card.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && item.link) {
+            e.preventDefault();
+            window.open(item.link, '_blank', 'noopener,noreferrer');
+          }
+        });
 
         card.appendChild(img);
         if (showCaptions) {
