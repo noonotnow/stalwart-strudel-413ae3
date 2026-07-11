@@ -626,12 +626,10 @@
           }
         };
 
-        if (item.link) {
-          card.onclick = () => openLightbox(displayResults, displayResults.indexOf(item));
-        }
+        card.onclick = () => openLightbox(displayResults, displayResults.indexOf(item));
 
         card.addEventListener('keydown', (e) => {
-          if ((e.key === 'Enter' || e.key === ' ') && item.link) {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openLightbox(displayResults, displayResults.indexOf(item));
           }
