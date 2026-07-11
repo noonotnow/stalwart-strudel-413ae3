@@ -2,9 +2,8 @@
   directory = "netlify/functions"
 
 [build]
-  base = "phase0/"
-  command = "npm run build"
-  publish = "phase0/dist/"
+  command = "cd phase0 && npm install && npm run build"
+  publish = "phase0/dist"
 
 [[redirects]]
   from = "/*"
