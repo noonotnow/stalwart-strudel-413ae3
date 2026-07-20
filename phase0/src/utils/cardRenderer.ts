@@ -7,7 +7,7 @@ import { loadExportCardFonts, readExportCardColors } from './exportCanvas';
 
 // ── Card dimensions ────────────────────────────────────────────────
 const CARD_W = 800;
-const CARD_H = 1100;
+const CARD_H = 1120;
 const PAD = 48;
 const IMG_AREA_H = 860;
 const FOOTER_H = CARD_H - IMG_AREA_H;
@@ -67,42 +67,68 @@ export async function renderCard(metadata: CardMetadata): Promise<Blob> {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
-  // ── Card border ──────────────────────────────────────────────────
+  // ── Card border (thin gold frame) ─────────────────────────────────
   const borderRadius = 24;
   ctx.save();
-  ctx.strokeStyle = `${colors.gold}40`;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = `${colors.gold}66`;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.roundRect(1, 1, CARD_W - 2, CARD_H - 2, borderRadius);
   ctx.stroke();
   ctx.restore();
 
-  // ── Main image ───────────────────────────────────────────────────
+  // ── Main image (center-crop to fill area) ────────────────────────
   const img = await loadImage(metadata.imageUrl);
 
   const imgPad = PAD;
   const imgMaxW = CARD_W - imgPad * 2;
   const imgMaxH = IMG_AREA_H - imgPad;
-  const imgRatio = img.naturalWidth / img.naturalHeight;
-  let drawW: number, drawH: number;
+  const imgX = imgPad;
+  const imgY = imgPad;
+  const imgRadius = 8;
 
-  if (imgRatio > imgMaxW / imgMaxH) {
-    drawW = imgMaxW;
-    drawH = imgMaxW / imgRatio;
+  // Center-crop: scale image to cover the target area, then center
+  const targetRatio = imgMaxW / imgMaxH;
+  const srcRatio = img.naturalWidth / img.naturalHeight;
+  let sx: number, sy: number, sw: number, sh: number;
+
+  if (srcRatio > targetRatio) {
+    // Image is wider — crop sides
+    sh = img.naturalHeight;
+    sw = sh * targetRatio;
+    sx = (img.naturalWidth - sw) / 2;
+    sy = 0;
   } else {
-    drawH = imgMaxH;
-    drawW = imgMaxH * imgRatio;
+    // Image is taller — crop top/bottom
+    sw = img.naturalWidth;
+    sh = sw / targetRatio;
+    sx = 0;
+    sy = (img.naturalHeight - sh) / 2;
   }
-
-  const imgX = (CARD_W - drawW) / 2;
-  const imgY = imgPad + (imgMaxH - drawH) / 2;
 
   // Rounded clip for image
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(imgX, imgY, drawW, drawH, 16);
+  ctx.roundRect(imgX, imgY, imgMaxW, imgMaxH, imgRadius);
   ctx.clip();
-  ctx.drawImage(img, imgX, imgY, drawW, drawH);
+  ctx.drawImage(img, sx, sy, sw, sh, imgX, imgY, imgMaxW, imgMaxH);
+
+  // Dark gradient overlay on image bottom for depth
+  const grad = ctx.createLinearGradient(0, imgY + imgMaxH * 0.6, 0, imgY + imgMaxH);
+  grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(imgX, imgY, imgMaxW, imgMaxH);
+
+  ctx.restore();
+
+  // Subtle inner shadow on image frame
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(imgX, imgY, imgMaxW, imgMaxH, imgRadius);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
   ctx.restore();
 
   // ── Metadata footer ──────────────────────────────────────────────
@@ -110,29 +136,45 @@ export async function renderCard(metadata: CardMetadata): Promise<Blob> {
   ctx.textAlign = 'center';
   const cx = CARD_W / 2;
 
-  // Actor name (gold, prominent)
-  ctx.font = 'bold 32px "Noto Sans SC", "Inter", sans-serif';
+  // Solid dark background for metadata area
+  ctx.fillStyle = colors.bg;
+  ctx.fillRect(0, footerY, CARD_W, FOOTER_H);
+
+  // Actor name (gold, commanding)
+  ctx.save();
+  ctx.font = 'bold 40px "Noto Sans SC", "Inter", sans-serif';
   ctx.fillStyle = colors.gold;
-  ctx.fillText(metadata.actorName, cx, footerY + 44);
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+  ctx.fillText(metadata.actorName, cx, footerY + 52);
+  ctx.restore();
 
   // Vibe label with emoji
-  ctx.font = '600 24px "Noto Sans SC", "Inter", sans-serif';
+  ctx.save();
+  ctx.font = '600 26px "Noto Sans SC", "Inter", sans-serif';
   ctx.fillStyle = colors.text;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1;
   ctx.fillText(
     `${metadata.vibeEmoji} ${metadata.vibeLabel} · ${metadata.vibeLabelEn}`,
     cx,
-    footerY + 84,
+    footerY + 96,
   );
+  ctx.restore();
 
-  // Date
-  ctx.font = '400 18px "Inter", sans-serif';
+  // Date (smaller, less prominent)
+  ctx.font = '400 16px "Inter", sans-serif';
   ctx.fillStyle = colors.textMuted;
-  ctx.fillText(metadata.date, cx, footerY + 118);
+  ctx.fillText(metadata.date, cx, footerY + 130);
 
-  // Watermark
-  ctx.font = 'bold 14px "Inter", "Noto Sans SC", sans-serif';
+  // Watermark (subtle)
+  ctx.font = 'bold 12px "Inter", "Noto Sans SC", sans-serif';
   ctx.fillStyle = `${colors.gold}99`;
-  ctx.fillText('VIBE ATLAS — 氛围图鉴 — fandom.justlikekatie.com', cx, footerY + FOOTER_H - 24);
+  ctx.globalAlpha = 0.6;
+  ctx.fillText('VIBE ATLAS — 氛围图鉴 — fandom.justlikekatie.com', cx, footerY + FOOTER_H - 20);
+  ctx.globalAlpha = 1.0;
 
   // ── Convert to blob ──────────────────────────────────────────────
   return new Promise<Blob>((resolve, reject) => {
