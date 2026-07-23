@@ -137,20 +137,21 @@ export const Lightbox: React.FC<LightboxProps> = ({
     [goNext, goPrev],
   );
 
-  if (!current) return null;
-
   const currentImage = images[currentIndex];
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    dbIsCardSaved(currentImage.thumbnail).then((saved) => {
-      if (!cancelled) setIsSaved(saved);
-    });
+    if (currentImage) {
+      dbIsCardSaved(currentImage.thumbnail).then((saved) => {
+        if (!cancelled) setIsSaved(saved);
+      });
+    }
     return () => { cancelled = true; };
-  }, [currentImage.thumbnail]);
+  }, [currentImage?.thumbnail]);
 
   async function handleSave() {
+    if (!currentImage) return;
     if (isSaved) {
       await dbRemoveCard(currentImage.thumbnail);
       setIsSaved(false);
@@ -173,6 +174,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
       if (navigator.vibrate) navigator.vibrate(50);
     }
   }
+
+  if (!current) return null;
 
   return (
     <div
