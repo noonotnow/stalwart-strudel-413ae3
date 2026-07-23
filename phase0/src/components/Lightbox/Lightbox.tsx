@@ -175,6 +175,41 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   if (!current) return null;
 
+  const currentImage = images[currentIndex];
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    dbIsCardSaved(currentImage.thumbnail).then((saved) => {
+      if (!cancelled) setIsSaved(saved);
+    });
+    return () => { cancelled = true; };
+  }, [currentImage.thumbnail]);
+
+  async function handleSave() {
+    if (isSaved) {
+      await dbRemoveCard(currentImage.thumbnail);
+      setIsSaved(false);
+    } else {
+      await dbSaveCard({
+        imageUrl: currentImage.thumbnail,
+        thumbnailUrl: currentImage.thumbnail,
+        actor: cardMetadata?.actorName ?? 'Unknown',
+        actorEn: cardMetadata?.actorName ?? 'Unknown',
+        vibe: cardMetadata?.vibeLabel ?? 'Unknown',
+        vibeEn: cardMetadata?.vibeLabelEn ?? 'Unknown',
+        vibeEmoji: cardMetadata?.vibeEmoji ?? '✨',
+        capturedDate: cardMetadata?.date ?? new Date().toISOString().split('T')[0],
+        gridContext: {
+          batchKey: currentImage.batchKey,
+          position: currentImage.gridPosition ?? currentIndex,
+        },
+      });
+      setIsSaved(true);
+      if (navigator.vibrate) navigator.vibrate(50);
+    }
+  }
+
   return (
     <div
       ref={overlayRef}
