@@ -5,11 +5,13 @@
 Shipped:
 - Added a homecooked Baidu Images provider at `/.netlify/functions/baidu-image-search?q=...`.
 - Added defensive embedded-JSON parsing for multiple Baidu page shapes, browser-like request headers, a 4.5-second per-attempt timeout, one exponential-backoff retry for HTTP 429/503, response type/size validation, and a one-hour warm-instance cache.
-- CJK search selection now prefers `Baidu → Google Images → Bing Images → Yandex Images → Brave`; Brave is fetched first as the existing baseline, then retained only if every preferred image provider fails or is rejected.
-- Baidu failures are logged and exposed through `baiduAttemptLog` in debug responses, then fall through to the existing SerpAPI cascade without failing Star of the Day.
+- Every query now fetches Baidu first. A qualifying Baidu batch is returned immediately without calling or blending Brave, Google, Bing, or Yandex.
+- Baidu must clear the existing seven-result viability threshold, 0.7 count/diversity quality threshold, all shared result filters, and both raw and post-filter subject-identity gates.
+- Only a Baidu hard failure, timeout, invalid/empty response, identity rejection, sparse batch, or low-quality batch invokes the existing fallback cascade: Brave baseline, then Google Images → Bing Images → Yandex Images when required. Brave remains the final retained fallback.
+- Baidu failures and rejections are logged and exposed through `baiduAttemptLog`, `baiduFallbackUsed`, and `fallbackReason` in debug responses without failing Star of the Day.
 - Baidu candidates reuse the existing placeholder, ad/promo, commerce, product URL, wrong-actor/co-star, namesake, reference-page, exact-URL, and same-source filters.
 - Added a 25% subject-mention ratio alongside the existing two-mention minimum for Baidu and SerpAPI batches. Baidu must pass the identity gate both before and after filtering, preventing promo-heavy volume from winning after its actor-bearing items are removed.
-- Results now carry per-item provider provenance, while debug responses document fetch order and final selection preference.
+- Results carry per-item provider provenance, while debug responses document the providers actually fetched and the final selection preference.
 
 Operational notes:
 - Baidu may still change its embedded page data or present anti-bot verification. Those responses are rejected explicitly and fall back rather than producing an empty Star of the Day.

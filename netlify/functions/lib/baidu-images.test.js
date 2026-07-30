@@ -44,6 +44,18 @@ function bravePayload(count = 8) {
   };
 }
 
+function baiduPayload(count = 8, sourceCount = 5) {
+  return JSON.stringify({
+    data: Array.from({ length: count }, (_, index) => ({
+      thumbURL: `https://baidu-images.example/${index}.jpg`,
+      objURL: `https://baidu-originals.example/${index}.jpg`,
+      fromURL: `https://baidu-source-${index % sourceCount}.example/article/${index}`,
+      fromURLHost: `baidu-source-${index % sourceCount}.example`,
+      fromPageTitle: `刘学义 Baidu result ${index}`,
+    })),
+  });
+}
+
 function serpPayload() {
   return {
     images_results: [
@@ -218,6 +230,8 @@ test("reuses existing actor, promo, commerce, and duplicate filters", async () =
   });
 
   assert.equal(baidu.subjectGuardPassed, true);
+  assert.equal(baidu.qualified, false);
+  assert.match(baidu.fallbackReason, /useful_count_below_threshold/);
   assert.deepEqual(
     baidu.results.map((result) => result.title),
     ["刘学义 念无双 垣仲", "刘学义 白衣造型"],
@@ -263,7 +277,8 @@ test("does not treat a query fallback as provider-supplied identity evidence", a
 test("exposes the direct Baidu Netlify endpoint", async () => {
   clearBaiduImageCache();
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => mockResponse(imgDataFixture);
+  globalThis.fetch = async () =>
+    mockResponse(baiduPayload(), { contentType: "application/json" });
   try {
     const response = await baiduImageHandler({
       queryStringParameters: { q: "刘学义 直接端点", debug: "1" },
@@ -272,18 +287,19 @@ test("exposes the direct Baidu Netlify endpoint", async () => {
 
     assert.equal(response.statusCode, 200);
     assert.equal(body.provider, "baidu");
-    assert.equal(body.results.length, 2);
+    assert.equal(body.results.length, 8);
     assert.equal(body.baiduAttemptLog.subjectGuardPassed, true);
+    assert.equal(body.baiduAttemptLog.qualified, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("selects Baidu before SerpAPI for CJK actor queries", async () => {
+test("returns a qualifying Baidu batch without invoking Brave or SerpAPI", async () => {
   const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
   const previousSerpKey = process.env.SERPAPI_KEY;
-  process.env.BRAVE_SEARCH_API_KEY = "brave-test";
-  process.env.SERPAPI_KEY = "serp-test";
+  delete process.env.BRAVE_SEARCH_API_KEY;
+  delete process.env.SERPAPI_KEY;
   const calls = [];
   try {
     const response = await searchOneQuery("刘学义 念无双 垣仲 白衣", {
@@ -291,18 +307,21 @@ test("selects Baidu before SerpAPI for CJK actor queries", async () => {
       baiduOptions: { cache: false, retries: 0 },
       fetchImpl: async (url) => {
         calls.push(url);
-        if (url.includes("api.search.brave.com")) {
-          return mockResponse(JSON.stringify(bravePayload()), { contentType: "application/json" });
+        if (url.includes("image.baidu.com")) {
+          return mockResponse(baiduPayload(), { contentType: "application/json" });
         }
-        if (url.includes("image.baidu.com")) return mockResponse(imgDataFixture);
         throw new Error(`Unexpected request: ${url}`);
       },
     });
 
     assert.equal(response.provider, "baidu");
     assert.equal(response.baiduAttemptLog.usedAsFinal, true);
+    assert.equal(response.baiduAttemptLog.qualified, true);
+    assert.equal(response.baiduFallbackUsed, false);
+    assert.equal(response.fallbackReason, null);
+    assert.deepEqual(response.providerFetchOrder, ["baidu"]);
     assert.equal(response.serpApiAttempted, false);
-    assert.equal(calls.some((url) => url.includes("serpapi.com")), false);
+    assert.equal(calls.length, 1);
     assert.ok(response.results.every((result) => result.provider === "baidu"));
   } finally {
     process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
@@ -316,6 +335,7 @@ test("continues to Google when Baidu is unavailable", async () => {
   process.env.BRAVE_SEARCH_API_KEY = "brave-test";
   process.env.SERPAPI_KEY = "serp-test";
   const warnings = [];
+  const calls = [];
   const originalWarn = console.warn;
   console.warn = (...args) => warnings.push(args);
   try {
@@ -323,6 +343,7 @@ test("continues to Google when Baidu is unavailable", async () => {
       debug: true,
       baiduOptions: { cache: false, retries: 0 },
       fetchImpl: async (url) => {
+        calls.push(url);
         if (url.includes("api.search.brave.com")) {
           return mockResponse(JSON.stringify(bravePayload()), { contentType: "application/json" });
         }
@@ -336,11 +357,133 @@ test("continues to Google when Baidu is unavailable", async () => {
 
     assert.equal(response.provider, "google_images");
     assert.equal(response.baiduAttemptLog.errorCode, "http_error");
+    assert.equal(response.baiduFallbackUsed, true);
+    assert.equal(response.fallbackReason, "provider_exception");
+    assert.deepEqual(response.providerFetchOrder, [
+      "baidu",
+      "brave_baseline",
+      "google_images",
+    ]);
     assert.equal(response.serpApiEngineLog[0].engine, "google_images");
     assert.equal(response.serpApiEngineLog[0].usedAsFinal, true);
+    assert.match(calls[0], /image\.baidu\.com/);
+    assert.match(calls[1], /api\.search\.brave\.com/);
+    assert.match(calls[2], /serpapi\.com/);
     assert.equal(warnings.length, 1);
   } finally {
     console.warn = originalWarn;
+    process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
+    process.env.SERPAPI_KEY = previousSerpKey;
+  }
+});
+
+test("falls back when Baidu is valid but below the viability threshold", async () => {
+  const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const previousSerpKey = process.env.SERPAPI_KEY;
+  process.env.BRAVE_SEARCH_API_KEY = "brave-test";
+  process.env.SERPAPI_KEY = "serp-test";
+  const calls = [];
+  try {
+    const response = await searchOneQuery("刘学义 念无双 垣仲 白衣", {
+      debug: true,
+      baiduOptions: { cache: false, retries: 0 },
+      fetchImpl: async (url) => {
+        calls.push(url);
+        if (url.includes("image.baidu.com")) {
+          return mockResponse(baiduPayload(6, 5), { contentType: "application/json" });
+        }
+        if (url.includes("api.search.brave.com")) {
+          return mockResponse(JSON.stringify(bravePayload()), { contentType: "application/json" });
+        }
+        if (url.includes("serpapi.com")) {
+          return mockResponse(JSON.stringify(serpPayload()), { contentType: "application/json" });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    });
+
+    assert.equal(response.provider, "google_images");
+    assert.equal(response.baiduAttemptLog.subjectGuardPassed, true);
+    assert.equal(response.baiduAttemptLog.viabilityPassed, false);
+    assert.equal(response.baiduAttemptLog.qualified, false);
+    assert.match(response.fallbackReason, /useful_count_below_threshold/);
+    assert.equal(calls.length, 3);
+  } finally {
+    process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
+    process.env.SERPAPI_KEY = previousSerpKey;
+  }
+});
+
+test("falls back when Baidu clears count but misses the quality threshold", async () => {
+  const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const previousSerpKey = process.env.SERPAPI_KEY;
+  process.env.BRAVE_SEARCH_API_KEY = "brave-test";
+  process.env.SERPAPI_KEY = "serp-test";
+  try {
+    const response = await searchOneQuery("刘学义 念无双 垣仲 白衣", {
+      debug: true,
+      baiduOptions: { cache: false, retries: 0 },
+      fetchImpl: async (url) => {
+        if (url.includes("image.baidu.com")) {
+          return mockResponse(baiduPayload(8, 1), { contentType: "application/json" });
+        }
+        if (url.includes("api.search.brave.com")) {
+          return mockResponse(JSON.stringify(bravePayload()), { contentType: "application/json" });
+        }
+        if (url.includes("serpapi.com")) {
+          return mockResponse(JSON.stringify(serpPayload()), { contentType: "application/json" });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    });
+
+    assert.equal(response.provider, "google_images");
+    assert.equal(response.baiduAttemptLog.viabilityPassed, true);
+    assert.equal(response.baiduAttemptLog.qualityPassed, false);
+    assert.equal(response.baiduAttemptLog.qualified, false);
+    assert.match(response.fallbackReason, /quality_below_threshold/);
+  } finally {
+    process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
+    process.env.SERPAPI_KEY = previousSerpKey;
+  }
+});
+
+test("continues from a thrown Google request to Bing with accurate telemetry", async () => {
+  const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const previousSerpKey = process.env.SERPAPI_KEY;
+  process.env.BRAVE_SEARCH_API_KEY = "brave-test";
+  process.env.SERPAPI_KEY = "serp-test";
+  try {
+    const response = await searchOneQuery("刘学义 念无双 垣仲 白衣", {
+      debug: true,
+      baiduOptions: { cache: false, retries: 0 },
+      fetchImpl: async (url) => {
+        if (url.includes("image.baidu.com")) {
+          return mockResponse(baiduPayload(6, 5), { contentType: "application/json" });
+        }
+        if (url.includes("api.search.brave.com")) {
+          return mockResponse(JSON.stringify(bravePayload()), { contentType: "application/json" });
+        }
+        if (url.includes("engine=google_images")) throw new Error("Google unavailable");
+        if (url.includes("engine=bing_images")) {
+          return mockResponse(JSON.stringify(serpPayload()), { contentType: "application/json" });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    });
+
+    assert.equal(response.provider, "bing_images");
+    assert.deepEqual(response.providerFetchOrder, [
+      "baidu",
+      "brave_baseline",
+      "google_images",
+      "bing_images",
+    ]);
+    assert.equal(response.serpApiEngineLog[0].engine, "google_images");
+    assert.equal(response.serpApiEngineLog[0].skippedReason, "exception");
+    assert.equal(response.serpApiEngineLog[1].engine, "bing_images");
+    assert.equal(response.serpApiEngineLog[1].usedAsFinal, true);
+  } finally {
     process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
     process.env.SERPAPI_KEY = previousSerpKey;
   }

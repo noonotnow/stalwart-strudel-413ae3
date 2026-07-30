@@ -257,10 +257,6 @@ function scoreResultQuality(results) {
   return { overall, diversity, countScore, uniqueSources: uniqueSources.size };
 }
 
-function containsCjk(text) {
-  return /[\u3400-\u9fff\uf900-\ufaff]/u.test(text);
-}
-
 function subjectGuard(rawItems, subjectToken, minimumRatio = 0) {
   const subjectHitCount = subjectToken
     ? rawItems.filter((item) =>
@@ -298,6 +294,20 @@ export async function searchBaiduProvider(
   const rawGuard = subjectGuard(baidu.results, subjectToken, SUBJECT_MIN_RATIO);
   const normalizedGuard = subjectGuard(normalized, subjectToken, SUBJECT_MIN_RATIO);
   const subjectGuardPassed = rawGuard.passed && normalizedGuard.passed;
+  const quality = scoreResultQuality(normalized);
+  const viabilityPassed = normalized.length >= USEFUL_FALLBACK_THRESHOLD;
+  const qualityPassed = quality.overall >= QUALITY_FALLBACK_THRESHOLD;
+  const qualified = subjectGuardPassed && viabilityPassed && qualityPassed;
+  const fallbackReason = !subjectGuardPassed
+    ? `subject_guard_failed (raw=${rawGuard.subjectHitCount}/${baidu.results.length}, ` +
+      `filtered=${normalizedGuard.subjectHitCount}/${normalized.length}, ` +
+      `minimum ratio=${SUBJECT_MIN_RATIO})`
+    : !viabilityPassed
+      ? `useful_count_below_threshold (${normalized.length} < ${USEFUL_FALLBACK_THRESHOLD})`
+      : !qualityPassed
+        ? `quality_below_threshold (${quality.overall.toFixed(2)} < ${QUALITY_FALLBACK_THRESHOLD}, ` +
+          `diversity=${quality.diversity.toFixed(2)}, sources=${quality.uniqueSources})`
+        : null;
   return {
     query: q,
     provider: "baidu",
@@ -310,13 +320,94 @@ export async function searchBaiduProvider(
     normalizedSubjectHitCount: normalizedGuard.subjectHitCount,
     normalizedSubjectHitRatio: normalizedGuard.subjectHitRatio,
     subjectGuardPassed,
+    viabilityPassed,
+    qualityPassed,
+    quality,
+    qualified,
+    fallbackReason,
     telemetry: baidu.telemetry,
   };
 }
 
-// Runs the full Brave baseline -> Baidu (for CJK queries) -> SerpAPI
-// (google_images -> bing_images -> yandex_images) fallback cascade for a single query,
-// including the ad/commerce/placeholder
+function createBaiduAttemptLog() {
+  return {
+    attempted: true,
+    httpStatus: null,
+    error: null,
+    errorCode: null,
+    rawCount: 0,
+    normalizedCount: 0,
+    subjectHitCount: 0,
+    subjectHitRatio: 0,
+    normalizedSubjectHitCount: 0,
+    normalizedSubjectHitRatio: 0,
+    subjectGuardPassed: null,
+    viabilityPassed: null,
+    qualityPassed: null,
+    quality: null,
+    qualified: false,
+    usedAsFinal: false,
+    fallbackReason: null,
+    telemetry: null,
+  };
+}
+
+function recordBaiduSuccess(log, baidu) {
+  log.httpStatus = baidu.telemetry.httpStatus;
+  log.rawCount = baidu.rawCount;
+  log.normalizedCount = baidu.normalizedCount;
+  log.subjectHitCount = baidu.subjectHitCount;
+  log.subjectHitRatio = baidu.subjectHitRatio;
+  log.normalizedSubjectHitCount = baidu.normalizedSubjectHitCount;
+  log.normalizedSubjectHitRatio = baidu.normalizedSubjectHitRatio;
+  log.subjectGuardPassed = baidu.subjectGuardPassed;
+  log.viabilityPassed = baidu.viabilityPassed;
+  log.qualityPassed = baidu.qualityPassed;
+  log.quality = baidu.quality;
+  log.qualified = baidu.qualified;
+  log.usedAsFinal = baidu.qualified;
+  log.fallbackReason = baidu.fallbackReason;
+  log.telemetry = baidu.telemetry;
+}
+
+function baiduResponse(q, baidu, baiduAttemptLog, debug) {
+  const response = {
+    query: q,
+    provider: "baidu",
+    results: baidu.results
+      .slice(0, 18)
+      .map(({ isLogo, thumbnailOriginal, ...result }) => ({ ...result, provider: "baidu" })),
+  };
+  if (debug) {
+    response.version = "baidu-images-v2-primary";
+    response.providerSelectionOrder = [
+      "baidu",
+      "google_images",
+      "bing_images",
+      "yandex_images",
+      "brave",
+    ];
+    response.providerFetchOrder = ["baidu"];
+    response.baiduAttemptLog = baiduAttemptLog;
+    response.baiduFallbackUsed = false;
+    response.fallbackReason = null;
+    response.fallbackUsed = false;
+    response.braveAttempted = false;
+    response.serpApiAttempted = false;
+    response.subjectToken = baidu.subjectToken;
+    response.subjectGuardReason =
+      `passed_on_baidu (${baidu.subjectHitCount}/${baidu.rawCount} mention ` +
+      `"${baidu.subjectToken}", ratio=${baidu.subjectHitRatio.toFixed(2)})`;
+    response.qualityFallbackThreshold = QUALITY_FALLBACK_THRESHOLD;
+    response.usefulFallbackThreshold = USEFUL_FALLBACK_THRESHOLD;
+  }
+  return response;
+}
+
+// Runs Baidu first. Only when Baidu fails or does not clear filtering, identity,
+// viability, and quality gates does it invoke the existing Brave baseline -> SerpAPI
+// (google_images -> bing_images -> yandex_images) cascade for the query.
+// Includes the ad/commerce/placeholder
 // filters and the subject-relevance guard. Returns a plain response-shaped
 // object (not an HTTP response) so both the HTTP handler below (manual/full-page
 // searches) and other in-process callers (e.g. the star-of-day cache builder)
@@ -329,10 +420,28 @@ export async function searchOneQuery(
   q,
   { debug = false, fetchImpl = globalThis.fetch, baiduOptions = {} } = {},
 ) {
-  const provider = "brave";
-
   if (!q) {
     throw new Error("Missing query parameter");
+  }
+
+  const baiduAttemptLog = createBaiduAttemptLog();
+  try {
+    const baidu = await searchBaiduProvider(q, { fetchImpl, baiduOptions });
+    recordBaiduSuccess(baiduAttemptLog, baidu);
+    if (baidu.qualified) {
+      return baiduResponse(q, baidu, baiduAttemptLog, debug);
+    }
+  } catch (baiduError) {
+    baiduAttemptLog.error = baiduError.message || "Baidu fetch error";
+    baiduAttemptLog.errorCode = baiduError.code || "unknown";
+    baiduAttemptLog.httpStatus = baiduError.status ?? null;
+    baiduAttemptLog.fallbackReason = "provider_exception";
+    console.warn("Baidu Images provider failed; continuing fallback cascade", {
+      query: q,
+      code: baiduAttemptLog.errorCode,
+      status: baiduAttemptLog.httpStatus,
+      message: baiduAttemptLog.error,
+    });
   }
 
   const braveKey = process.env.BRAVE_SEARCH_API_KEY;
@@ -423,23 +532,6 @@ export async function searchOneQuery(
     let serpApiFirstResultSample = null;
     let serpApiUrlNoKey = null;
     let serpApiEngineLog = [];
-    const baiduAttemptLog = {
-      attempted: false,
-      httpStatus: null,
-      error: null,
-      errorCode: null,
-      rawCount: 0,
-      normalizedCount: 0,
-      subjectHitCount: 0,
-      subjectHitRatio: 0,
-      normalizedSubjectHitCount: 0,
-      normalizedSubjectHitRatio: 0,
-      subjectGuardPassed: null,
-      usedAsFinal: false,
-      skippedReason: containsCjk(q) ? null : "non_cjk_query",
-      telemetry: null,
-    };
-
     const hasCommerceResults = braveNormalized.length > braveUseful.length;
     const braveQuality = scoreResultQuality(braveUseful);
     const qualityBelowThreshold = braveQuality.overall < QUALITY_FALLBACK_THRESHOLD;
@@ -456,60 +548,17 @@ export async function searchOneQuery(
           ? `quality_below_threshold (${braveQuality.overall.toFixed(2)} < ${QUALITY_FALLBACK_THRESHOLD}, diversity=${braveQuality.diversity.toFixed(2)}, sources=${braveQuality.uniqueSources})`
           : `sufficient_quality (${braveQuality.overall.toFixed(2)} >= ${QUALITY_FALLBACK_THRESHOLD}, sources=${braveQuality.uniqueSources})`;
     if (preferActorIdentityProvider || !braveSubjectGuardPassed || hasCommerceResults || braveUseful.length < USEFUL_FALLBACK_THRESHOLD || qualityBelowThreshold) {
-      if (containsCjk(q)) {
-        baiduAttemptLog.attempted = true;
-        try {
-          const baidu = await searchBaiduProvider(q, { fetchImpl, baiduOptions });
-          baiduAttemptLog.httpStatus = baidu.telemetry.httpStatus;
-          baiduAttemptLog.rawCount = baidu.rawCount;
-          baiduAttemptLog.normalizedCount = baidu.normalizedCount;
-          baiduAttemptLog.subjectHitCount = baidu.subjectHitCount;
-          baiduAttemptLog.subjectHitRatio = baidu.subjectHitRatio;
-          baiduAttemptLog.normalizedSubjectHitCount = baidu.normalizedSubjectHitCount;
-          baiduAttemptLog.normalizedSubjectHitRatio = baidu.normalizedSubjectHitRatio;
-          baiduAttemptLog.subjectGuardPassed = baidu.subjectGuardPassed;
-          baiduAttemptLog.telemetry = baidu.telemetry;
-
-          if (baidu.results.length > 0 && baidu.subjectGuardPassed) {
-            finalResults = baidu.results;
-            finalProvider = "baidu";
-            baiduAttemptLog.usedAsFinal = true;
-            subjectGuardReason =
-              `passed_on_baidu (${baidu.subjectHitCount}/${baidu.rawCount} mention "${subjectToken}", ` +
-              `ratio=${baidu.subjectHitRatio.toFixed(2)})`;
-          } else {
-            baiduAttemptLog.skippedReason =
-              baidu.normalizedCount === 0
-                ? "zero_useful_results_after_filtering"
-                : `subject_guard_failed (raw=${baidu.subjectHitCount}/${baidu.rawCount}, ` +
-                  `filtered=${baidu.normalizedSubjectHitCount}/${baidu.normalizedCount}, ` +
-                  `minimum ratio=${SUBJECT_MIN_RATIO})`;
-          }
-        } catch (baiduError) {
-          baiduAttemptLog.error = baiduError.message || "Baidu fetch error";
-          baiduAttemptLog.errorCode = baiduError.code || "unknown";
-          baiduAttemptLog.httpStatus = baiduError.status ?? null;
-          baiduAttemptLog.skippedReason = "exception";
-          console.warn("Baidu Images provider failed; continuing fallback cascade", {
-            query: q,
-            code: baiduAttemptLog.errorCode,
-            status: baiduAttemptLog.httpStatus,
-            message: baiduAttemptLog.error,
-          });
-        }
-      }
-
       const serpKey = process.env.SERPAPI_KEY;
       serpApiConfigured = !!serpKey;
-      if (serpKey && finalProvider !== "baidu") {
+      if (serpKey) {
         serpApiAttempted = true;
-        try {
-          // Baidu is fetched directly above because SerpAPI has no supported Baidu Images
-          // engine. If it is unavailable or fails its subject gate, continue through the
-          // existing SerpAPI engines in their established order.
-          const IMAGE_ENGINES = ["google_images", "bing_images", "yandex_images"];
-          for (const engine of IMAGE_ENGINES) {
-            const engineLog = { engine, httpStatus: null, error: null, rawCount: 0, normalizedCount: 0, subjectHitCount: 0, subjectGuardPassed: null, usedAsFinal: false, skippedReason: null };
+        // Baidu is fetched directly above because SerpAPI has no supported Baidu Images
+        // engine. If it is unavailable or fails its gates, continue through the existing
+        // SerpAPI engines in their established order.
+        const IMAGE_ENGINES = ["google_images", "bing_images", "yandex_images"];
+        for (const engine of IMAGE_ENGINES) {
+          const engineLog = { engine, httpStatus: null, error: null, rawCount: 0, normalizedCount: 0, subjectHitCount: 0, subjectGuardPassed: null, usedAsFinal: false, skippedReason: null };
+          try {
 
             const serpUrl =
               "https://serpapi.com/search.json" +
@@ -601,10 +650,12 @@ export async function searchOneQuery(
               }
               serpApiEngineLog.push(engineLog);
             }
+          } catch (serpErr) {
+            serpApiError = serpErr.message || "fetch error";
+            engineLog.error = serpApiError;
+            engineLog.skippedReason = "exception";
+            serpApiEngineLog.push(engineLog);
           }
-        } catch (serpErr) {
-          serpApiError = serpErr.message || "fetch error";
-          serpApiEngineLog.push({ engine: "unknown", httpStatus: null, error: serpApiError, rawCount: 0, normalizedCount: 0, usedAsFinal: false, skippedReason: "exception" });
         }
       }
     }
@@ -618,13 +669,19 @@ export async function searchOneQuery(
     };
 
     if (debug) {
-      response.version = "baidu-images-v1";
-      response.providerSelectionOrder = containsCjk(q)
-        ? ["baidu", "google_images", "bing_images", "yandex_images", "brave"]
-        : ["google_images", "bing_images", "yandex_images", "brave"];
-      response.providerFetchOrder = containsCjk(q)
-        ? ["brave_baseline", "baidu", "google_images", "bing_images", "yandex_images"]
-        : ["brave_baseline", "google_images", "bing_images", "yandex_images"];
+      response.version = "baidu-images-v2-primary";
+      response.providerSelectionOrder = [
+        "baidu",
+        "google_images",
+        "bing_images",
+        "yandex_images",
+        "brave",
+      ];
+      response.providerFetchOrder = [
+        "baidu",
+        "brave_baseline",
+        ...serpApiEngineLog.map((entry) => entry.engine),
+      ];
       response.braveRawCount = braveRaw.length;
       response.braveNormalizedCount = braveNormalized.length;
       response.braveUsefulCount = braveUseful.length;
@@ -649,6 +706,8 @@ export async function searchOneQuery(
       response.serpApiFirstResultKeys = serpApiFirstResultKeys;
       response.serpApiFirstResultSample = serpApiFirstResultSample;
       response.baiduAttemptLog = baiduAttemptLog;
+      response.baiduFallbackUsed = true;
+      response.fallbackReason = baiduAttemptLog.fallbackReason;
       // Per-engine attempt log, in cascade order: which engines were tried, skipped (and why),
       // their HTTP status, raw/normalized candidate counts, and which one (if any) was used.
       response.serpApiEngineLog = serpApiEngineLog;
@@ -685,33 +744,21 @@ export async function handler(event) {
   try {
     if (provider === "baidu") {
       const baidu = await searchBaiduProvider(q);
+      const baiduAttemptLog = createBaiduAttemptLog();
+      recordBaiduSuccess(baiduAttemptLog, baidu);
       const response = {
         query: q,
         provider,
-        results: baidu.results
+        results: (baidu.qualified ? baidu.results : [])
           .slice(0, 18)
           .map(({ isLogo, thumbnailOriginal, ...result }) => ({ ...result, provider })),
       };
-      if (!baidu.subjectGuardPassed) {
-        response.error =
-          `Baidu subject guard rejected the batch (${baidu.subjectHitCount}/${baidu.rawCount} ` +
-          `results mention "${baidu.subjectToken}")`;
-      } else if (baidu.results.length === 0) {
-        response.error = "Baidu returned no usable results after filtering";
+      if (!baidu.qualified) {
+        response.error = `Baidu batch rejected: ${baidu.fallbackReason}`;
       }
       if (debug) {
-        response.version = "baidu-images-v1";
-        response.baiduAttemptLog = {
-          attempted: true,
-          rawCount: baidu.rawCount,
-          normalizedCount: baidu.normalizedCount,
-          subjectHitCount: baidu.subjectHitCount,
-          subjectHitRatio: baidu.subjectHitRatio,
-          normalizedSubjectHitCount: baidu.normalizedSubjectHitCount,
-          normalizedSubjectHitRatio: baidu.normalizedSubjectHitRatio,
-          subjectGuardPassed: baidu.subjectGuardPassed,
-          telemetry: baidu.telemetry,
-        };
+        response.version = "baidu-images-v2-primary";
+        response.baiduAttemptLog = baiduAttemptLog;
       }
       return jsonResponse(200, response);
     }
