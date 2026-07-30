@@ -44,14 +44,14 @@ function bravePayload(count = 8) {
   };
 }
 
-function baiduPayload(count = 8, sourceCount = 5) {
+function baiduPayload(count = 8, sourceCount = 5, subject = "刘学义") {
   return JSON.stringify({
     data: Array.from({ length: count }, (_, index) => ({
       thumbURL: `https://baidu-images.example/${index}.jpg`,
       objURL: `https://baidu-originals.example/${index}.jpg`,
       fromURL: `https://baidu-source-${index % sourceCount}.example/article/${index}`,
       fromURLHost: `baidu-source-${index % sourceCount}.example`,
-      fromPageTitle: `刘学义 Baidu result ${index}`,
+      fromPageTitle: `${subject} Baidu result ${index}`,
     })),
   });
 }
@@ -323,6 +323,82 @@ test("returns a qualifying Baidu batch without invoking Brave or SerpAPI", async
     assert.equal(response.serpApiAttempted, false);
     assert.equal(calls.length, 1);
     assert.ok(response.results.every((result) => result.provider === "baidu"));
+  } finally {
+    process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
+    process.env.SERPAPI_KEY = previousSerpKey;
+  }
+});
+
+test("preserves Brave-first behavior for non-CJK queries", async () => {
+  const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const previousSerpKey = process.env.SERPAPI_KEY;
+  process.env.BRAVE_SEARCH_API_KEY = "brave-test";
+  delete process.env.SERPAPI_KEY;
+  const calls = [];
+  try {
+    const response = await searchOneQuery("Brad Pitt editorial portrait", {
+      debug: true,
+      baiduOptions: { cache: false, retries: 0 },
+      fetchImpl: async (url) => {
+        calls.push(url);
+        if (url.includes("api.search.brave.com")) {
+          return mockResponse(
+            JSON.stringify({
+              results: Array.from({ length: 8 }, (_, index) => ({
+                title: `Brad Pitt editorial ${index}`,
+                description: "Brad Pitt",
+                url: `https://english-source-${index}.example/article`,
+                thumbnail: { src: `https://english-images.example/${index}.jpg` },
+              })),
+            }),
+            { contentType: "application/json" },
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    });
+
+    assert.equal(response.provider, "brave");
+    assert.equal(response.baiduAttemptLog.attempted, false);
+    assert.equal(response.baiduAttemptLog.skippedReason, "non_cjk_query");
+    assert.equal(response.baiduFallbackUsed, false);
+    assert.equal(response.fallbackReason, null);
+    assert.deepEqual(response.providerFetchOrder, ["brave_baseline"]);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /api\.search\.brave\.com/);
+  } finally {
+    process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
+    process.env.SERPAPI_KEY = previousSerpKey;
+  }
+});
+
+test("routes Han, kana, and Hangul queries through Baidu first", async () => {
+  const previousBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const previousSerpKey = process.env.SERPAPI_KEY;
+  delete process.env.BRAVE_SEARCH_API_KEY;
+  delete process.env.SERPAPI_KEY;
+  try {
+    for (const query of ["山崎賢人 俳優", "김수현 배우", "𠮷沢亮 俳優"]) {
+      const subject = query.split(/\s+/)[0];
+      const calls = [];
+      const response = await searchOneQuery(query, {
+        debug: true,
+        baiduOptions: { cache: false, retries: 0 },
+        fetchImpl: async (url) => {
+          calls.push(url);
+          if (url.includes("image.baidu.com")) {
+            return mockResponse(baiduPayload(8, 5, subject), {
+              contentType: "application/json",
+            });
+          }
+          throw new Error(`Unexpected request: ${url}`);
+        },
+      });
+
+      assert.equal(response.provider, "baidu");
+      assert.deepEqual(response.providerFetchOrder, ["baidu"]);
+      assert.equal(calls.length, 1);
+    }
   } finally {
     process.env.BRAVE_SEARCH_API_KEY = previousBraveKey;
     process.env.SERPAPI_KEY = previousSerpKey;

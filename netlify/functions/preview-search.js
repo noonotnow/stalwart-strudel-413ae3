@@ -257,6 +257,10 @@ function scoreResultQuality(results) {
   return { overall, diversity, countScore, uniqueSources: uniqueSources.size };
 }
 
+function containsCjk(text) {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text);
+}
+
 function subjectGuard(rawItems, subjectToken, minimumRatio = 0) {
   const subjectHitCount = subjectToken
     ? rawItems.filter((item) =>
@@ -329,9 +333,9 @@ export async function searchBaiduProvider(
   };
 }
 
-function createBaiduAttemptLog() {
+function createBaiduAttemptLog(attempted = true) {
   return {
-    attempted: true,
+    attempted,
     httpStatus: null,
     error: null,
     errorCode: null,
@@ -348,6 +352,7 @@ function createBaiduAttemptLog() {
     qualified: false,
     usedAsFinal: false,
     fallbackReason: null,
+    skippedReason: attempted ? null : "non_cjk_query",
     telemetry: null,
   };
 }
@@ -424,24 +429,27 @@ export async function searchOneQuery(
     throw new Error("Missing query parameter");
   }
 
-  const baiduAttemptLog = createBaiduAttemptLog();
-  try {
-    const baidu = await searchBaiduProvider(q, { fetchImpl, baiduOptions });
-    recordBaiduSuccess(baiduAttemptLog, baidu);
-    if (baidu.qualified) {
-      return baiduResponse(q, baidu, baiduAttemptLog, debug);
+  const baiduEligible = containsCjk(q);
+  const baiduAttemptLog = createBaiduAttemptLog(baiduEligible);
+  if (baiduEligible) {
+    try {
+      const baidu = await searchBaiduProvider(q, { fetchImpl, baiduOptions });
+      recordBaiduSuccess(baiduAttemptLog, baidu);
+      if (baidu.qualified) {
+        return baiduResponse(q, baidu, baiduAttemptLog, debug);
+      }
+    } catch (baiduError) {
+      baiduAttemptLog.error = baiduError.message || "Baidu fetch error";
+      baiduAttemptLog.errorCode = baiduError.code || "unknown";
+      baiduAttemptLog.httpStatus = baiduError.status ?? null;
+      baiduAttemptLog.fallbackReason = "provider_exception";
+      console.warn("Baidu Images provider failed; continuing fallback cascade", {
+        query: q,
+        code: baiduAttemptLog.errorCode,
+        status: baiduAttemptLog.httpStatus,
+        message: baiduAttemptLog.error,
+      });
     }
-  } catch (baiduError) {
-    baiduAttemptLog.error = baiduError.message || "Baidu fetch error";
-    baiduAttemptLog.errorCode = baiduError.code || "unknown";
-    baiduAttemptLog.httpStatus = baiduError.status ?? null;
-    baiduAttemptLog.fallbackReason = "provider_exception";
-    console.warn("Baidu Images provider failed; continuing fallback cascade", {
-      query: q,
-      code: baiduAttemptLog.errorCode,
-      status: baiduAttemptLog.httpStatus,
-      message: baiduAttemptLog.error,
-    });
   }
 
   const braveKey = process.env.BRAVE_SEARCH_API_KEY;
@@ -670,15 +678,11 @@ export async function searchOneQuery(
 
     if (debug) {
       response.version = "baidu-images-v2-primary";
-      response.providerSelectionOrder = [
-        "baidu",
-        "google_images",
-        "bing_images",
-        "yandex_images",
-        "brave",
-      ];
+      response.providerSelectionOrder = baiduEligible
+        ? ["baidu", "google_images", "bing_images", "yandex_images", "brave"]
+        : ["google_images", "bing_images", "yandex_images", "brave"];
       response.providerFetchOrder = [
-        "baidu",
+        ...(baiduEligible ? ["baidu"] : []),
         "brave_baseline",
         ...serpApiEngineLog.map((entry) => entry.engine),
       ];
@@ -706,8 +710,8 @@ export async function searchOneQuery(
       response.serpApiFirstResultKeys = serpApiFirstResultKeys;
       response.serpApiFirstResultSample = serpApiFirstResultSample;
       response.baiduAttemptLog = baiduAttemptLog;
-      response.baiduFallbackUsed = true;
-      response.fallbackReason = baiduAttemptLog.fallbackReason;
+      response.baiduFallbackUsed = baiduEligible;
+      response.fallbackReason = baiduEligible ? baiduAttemptLog.fallbackReason : null;
       // Per-engine attempt log, in cascade order: which engines were tried, skipped (and why),
       // their HTTP status, raw/normalized candidate counts, and which one (if any) was used.
       response.serpApiEngineLog = serpApiEngineLog;

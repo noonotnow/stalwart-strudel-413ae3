@@ -5,7 +5,7 @@
 Shipped:
 - Added a homecooked Baidu Images provider at `/.netlify/functions/baidu-image-search?q=...`.
 - Added defensive embedded-JSON parsing for multiple Baidu page shapes, browser-like request headers, a 4.5-second per-attempt timeout, one exponential-backoff retry for HTTP 429/503, response type/size validation, and a one-hour warm-instance cache.
-- Every query now fetches Baidu first. A qualifying Baidu batch is returned immediately without calling or blending Brave, Google, Bing, or Yandex.
+- CJK queries now fetch Baidu first. A qualifying Baidu batch is returned immediately without calling or blending Brave, Google, Bing, or Yandex. Non-CJK queries retain their existing Brave-first behavior.
 - Baidu must clear the existing seven-result viability threshold, 0.7 count/diversity quality threshold, all shared result filters, and both raw and post-filter subject-identity gates.
 - Only a Baidu hard failure, timeout, invalid/empty response, identity rejection, sparse batch, or low-quality batch invokes the existing fallback cascade: Brave baseline, then Google Images → Bing Images → Yandex Images when required. Brave remains the final retained fallback.
 - Baidu failures and rejections are logged and exposed through `baiduAttemptLog`, `baiduFallbackUsed`, and `fallbackReason` in debug responses without failing Star of the Day.
