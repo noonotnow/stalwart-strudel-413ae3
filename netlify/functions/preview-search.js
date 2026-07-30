@@ -1,4 +1,5 @@
 import { ACTOR_PACKS } from "./lib/actor-packs.js";
+import { searchBaiduImages } from "./lib/baidu-images.js";
 
 // Non-subject content: things that regularly slip past ad/commerce/placeholder
 // filters (real photos, not logos, not known commerce domains) but are reliably
@@ -239,6 +240,8 @@ const USEFUL_FALLBACK_THRESHOLD = 7;
 const QUALITY_DIVERSITY_WEIGHT = 0.6;
 const QUALITY_COUNT_WEIGHT = 0.4;
 const QUALITY_FALLBACK_THRESHOLD = 0.7;
+const SUBJECT_MIN_MENTIONS = 2;
+const SUBJECT_MIN_RATIO = 0.25;
 
 function scoreResultQuality(results) {
   if (!results || results.length === 0) return { overall: 0, diversity: 0, countScore: 0 };
@@ -254,8 +257,66 @@ function scoreResultQuality(results) {
   return { overall, diversity, countScore, uniqueSources: uniqueSources.size };
 }
 
-// Runs the full Brave -> SerpAPI (bing_images -> google_images -> yandex_images)
-// fallback cascade for a single query, including the ad/commerce/placeholder
+function containsCjk(text) {
+  return /[\u3400-\u9fff\uf900-\ufaff]/u.test(text);
+}
+
+function subjectGuard(rawItems, subjectToken, minimumRatio = 0) {
+  const subjectHitCount = subjectToken
+    ? rawItems.filter((item) =>
+        `${item.title || ""} ${item.description || ""}`.includes(subjectToken),
+      ).length
+    : rawItems.length;
+  const subjectHitRatio = rawItems.length > 0 ? subjectHitCount / rawItems.length : 0;
+  return {
+    subjectHitCount,
+    subjectHitRatio,
+    passed:
+      !subjectToken ||
+      (subjectHitCount >= SUBJECT_MIN_MENTIONS && subjectHitRatio >= minimumRatio),
+  };
+}
+
+export function sanitizeProviderResults(items, subjectToken) {
+  return dedupeSameSource(
+    dedupeResults(
+      filterResults(items)
+        .filter((result) => !isCommerceDomain(result.source))
+        .filter((result) => passesPerItemSubjectFilter(result, subjectToken))
+        .filter((result) => !isProductUrl(result.link, result.title, subjectToken)),
+    ),
+  );
+}
+
+export async function searchBaiduProvider(
+  q,
+  { fetchImpl = globalThis.fetch, baiduOptions = {} } = {},
+) {
+  const subjectToken = q.split(/\s+/)[0] || "";
+  const baidu = await searchBaiduImages(q, { fetchImpl, ...baiduOptions });
+  const normalized = sanitizeProviderResults(baidu.results, subjectToken);
+  const rawGuard = subjectGuard(baidu.results, subjectToken, SUBJECT_MIN_RATIO);
+  const normalizedGuard = subjectGuard(normalized, subjectToken, SUBJECT_MIN_RATIO);
+  const subjectGuardPassed = rawGuard.passed && normalizedGuard.passed;
+  return {
+    query: q,
+    provider: "baidu",
+    results: subjectGuardPassed ? normalized : [],
+    rawCount: baidu.results.length,
+    normalizedCount: normalized.length,
+    subjectToken,
+    subjectHitCount: rawGuard.subjectHitCount,
+    subjectHitRatio: rawGuard.subjectHitRatio,
+    normalizedSubjectHitCount: normalizedGuard.subjectHitCount,
+    normalizedSubjectHitRatio: normalizedGuard.subjectHitRatio,
+    subjectGuardPassed,
+    telemetry: baidu.telemetry,
+  };
+}
+
+// Runs the full Brave baseline -> Baidu (for CJK queries) -> SerpAPI
+// (google_images -> bing_images -> yandex_images) fallback cascade for a single query,
+// including the ad/commerce/placeholder
 // filters and the subject-relevance guard. Returns a plain response-shaped
 // object (not an HTTP response) so both the HTTP handler below (manual/full-page
 // searches) and other in-process callers (e.g. the star-of-day cache builder)
@@ -264,7 +325,10 @@ function scoreResultQuality(results) {
 // Throws on hard failures (missing key, network error) — callers decide how to
 // handle that (the HTTP handler below turns it into a 500; star-of-day treats a
 // thrown/empty result as "this candidate query produced nothing usable").
-export async function searchOneQuery(q, { debug = false } = {}) {
+export async function searchOneQuery(
+  q,
+  { debug = false, fetchImpl = globalThis.fetch, baiduOptions = {} } = {},
+) {
   const provider = "brave";
 
   if (!q) {
@@ -283,7 +347,7 @@ export async function searchOneQuery(q, { debug = false } = {}) {
       `&count=40` +
       `&safesearch=moderate`;
 
-    const braveResp = await fetch(braveUrl, {
+    const braveResp = await fetchImpl(braveUrl, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -306,8 +370,6 @@ export async function searchOneQuery(q, { debug = false } = {}) {
     // now applies on BOTH the Brave path and the SerpAPI cascade below (previously it only
     // existed inside the SerpAPI loop, so Brave — the primary, most-used path — had zero
     // subject-relevance checking at all).
-    const SUBJECT_MIN_MENTIONS = 2;
-    const SUBJECT_MIN_BRAVE_RATIO = 0.25;
     const subjectToken = q.split(/\s+/)[0] || "";
     let subjectGuardReason = "not_applicable";
 
@@ -330,27 +392,21 @@ export async function searchOneQuery(q, { debug = false } = {}) {
         .filter((r) => !isProductUrl(r.link, r.title, subjectToken));
     }
 
-    const braveSubjectHitCount = subjectToken
-      ? braveRaw.filter((item) => `${item.title || ""} ${item.description || ""}`.includes(subjectToken)).length
-      : braveRaw.length;
-    const braveSubjectHitRatio = braveRaw.length > 0
-      ? braveSubjectHitCount / braveRaw.length
-      : 0;
-    const braveSubjectGuardPassed = !subjectToken || (
-      braveSubjectHitCount >= SUBJECT_MIN_MENTIONS &&
-      braveSubjectHitRatio >= SUBJECT_MIN_BRAVE_RATIO
-    );
+    const braveGuard = subjectGuard(braveRaw, subjectToken, SUBJECT_MIN_RATIO);
+    const braveSubjectHitCount = braveGuard.subjectHitCount;
+    const braveSubjectHitRatio = braveGuard.subjectHitRatio;
+    const braveSubjectGuardPassed = braveGuard.passed;
 
     // Use braveUseful (not braveNormalized) so commerce results are never shown as fallback.
-    // For actor/person searches, still try the stronger Google Images provider even when
-    // Brave has enough nominal volume: titles that mention the actor can accompany an
-    // ensemble or co-star image, which text-only Brave quality checks cannot detect.
+    // For actor/person searches, still try the stronger image providers even when Brave
+    // has enough nominal volume: titles that mention the actor can accompany an ensemble
+    // or co-star image, which text-only Brave quality checks cannot detect.
     let finalResults = braveSubjectGuardPassed ? braveUseful : [];
     let finalProvider = "brave";
     if (braveSubjectGuardPassed && braveUseful.length > 0) {
       subjectGuardReason = `passed (${braveSubjectHitCount}/${braveRaw.length} mention "${subjectToken}") on brave`;
     } else if (!braveSubjectGuardPassed) {
-      subjectGuardReason = `failed_on_brave (${braveSubjectHitCount}/${braveRaw.length} mention "${subjectToken}", minimum ratio ${SUBJECT_MIN_BRAVE_RATIO})`;
+      subjectGuardReason = `failed_on_brave (${braveSubjectHitCount}/${braveRaw.length} mention "${subjectToken}", minimum ratio ${SUBJECT_MIN_RATIO})`;
     }
 
     let serpApiConfigured = false;
@@ -367,6 +423,22 @@ export async function searchOneQuery(q, { debug = false } = {}) {
     let serpApiFirstResultSample = null;
     let serpApiUrlNoKey = null;
     let serpApiEngineLog = [];
+    const baiduAttemptLog = {
+      attempted: false,
+      httpStatus: null,
+      error: null,
+      errorCode: null,
+      rawCount: 0,
+      normalizedCount: 0,
+      subjectHitCount: 0,
+      subjectHitRatio: 0,
+      normalizedSubjectHitCount: 0,
+      normalizedSubjectHitRatio: 0,
+      subjectGuardPassed: null,
+      usedAsFinal: false,
+      skippedReason: containsCjk(q) ? null : "non_cjk_query",
+      telemetry: null,
+    };
 
     const hasCommerceResults = braveNormalized.length > braveUseful.length;
     const braveQuality = scoreResultQuality(braveUseful);
@@ -384,18 +456,57 @@ export async function searchOneQuery(q, { debug = false } = {}) {
           ? `quality_below_threshold (${braveQuality.overall.toFixed(2)} < ${QUALITY_FALLBACK_THRESHOLD}, diversity=${braveQuality.diversity.toFixed(2)}, sources=${braveQuality.uniqueSources})`
           : `sufficient_quality (${braveQuality.overall.toFixed(2)} >= ${QUALITY_FALLBACK_THRESHOLD}, sources=${braveQuality.uniqueSources})`;
     if (preferActorIdentityProvider || !braveSubjectGuardPassed || hasCommerceResults || braveUseful.length < USEFUL_FALLBACK_THRESHOLD || qualityBelowThreshold) {
+      if (containsCjk(q)) {
+        baiduAttemptLog.attempted = true;
+        try {
+          const baidu = await searchBaiduProvider(q, { fetchImpl, baiduOptions });
+          baiduAttemptLog.httpStatus = baidu.telemetry.httpStatus;
+          baiduAttemptLog.rawCount = baidu.rawCount;
+          baiduAttemptLog.normalizedCount = baidu.normalizedCount;
+          baiduAttemptLog.subjectHitCount = baidu.subjectHitCount;
+          baiduAttemptLog.subjectHitRatio = baidu.subjectHitRatio;
+          baiduAttemptLog.normalizedSubjectHitCount = baidu.normalizedSubjectHitCount;
+          baiduAttemptLog.normalizedSubjectHitRatio = baidu.normalizedSubjectHitRatio;
+          baiduAttemptLog.subjectGuardPassed = baidu.subjectGuardPassed;
+          baiduAttemptLog.telemetry = baidu.telemetry;
+
+          if (baidu.results.length > 0 && baidu.subjectGuardPassed) {
+            finalResults = baidu.results;
+            finalProvider = "baidu";
+            baiduAttemptLog.usedAsFinal = true;
+            subjectGuardReason =
+              `passed_on_baidu (${baidu.subjectHitCount}/${baidu.rawCount} mention "${subjectToken}", ` +
+              `ratio=${baidu.subjectHitRatio.toFixed(2)})`;
+          } else {
+            baiduAttemptLog.skippedReason =
+              baidu.normalizedCount === 0
+                ? "zero_useful_results_after_filtering"
+                : `subject_guard_failed (raw=${baidu.subjectHitCount}/${baidu.rawCount}, ` +
+                  `filtered=${baidu.normalizedSubjectHitCount}/${baidu.normalizedCount}, ` +
+                  `minimum ratio=${SUBJECT_MIN_RATIO})`;
+          }
+        } catch (baiduError) {
+          baiduAttemptLog.error = baiduError.message || "Baidu fetch error";
+          baiduAttemptLog.errorCode = baiduError.code || "unknown";
+          baiduAttemptLog.httpStatus = baiduError.status ?? null;
+          baiduAttemptLog.skippedReason = "exception";
+          console.warn("Baidu Images provider failed; continuing fallback cascade", {
+            query: q,
+            code: baiduAttemptLog.errorCode,
+            status: baiduAttemptLog.httpStatus,
+            message: baiduAttemptLog.error,
+          });
+        }
+      }
+
       const serpKey = process.env.SERPAPI_KEY;
       serpApiConfigured = !!serpKey;
-      if (serpKey) {
+      if (serpKey && finalProvider !== "baidu") {
         serpApiAttempted = true;
         try {
-          // Google is the strongest available actor-identity provider. Prefer it over
-          // Bing when Brave's actor precision is weak, then retain the remaining
-          // engines as progressively looser fallbacks.
-          // Baidu is intentionally excluded here — SerpAPI has no supported baidu images
-          // engine (baidu_image / baidu_images both 400 "Unsupported engine"). Baidu is
-          // still offered to users as a direct deep-link button (see index.html), which
-          // is unrelated to this SerpAPI cascade.
+          // Baidu is fetched directly above because SerpAPI has no supported Baidu Images
+          // engine. If it is unavailable or fails its subject gate, continue through the
+          // existing SerpAPI engines in their established order.
           const IMAGE_ENGINES = ["google_images", "bing_images", "yandex_images"];
           for (const engine of IMAGE_ENGINES) {
             const engineLog = { engine, httpStatus: null, error: null, rawCount: 0, normalizedCount: 0, subjectHitCount: 0, subjectGuardPassed: null, usedAsFinal: false, skippedReason: null };
@@ -408,7 +519,7 @@ export async function searchOneQuery(q, { debug = false } = {}) {
 
             serpApiUrlNoKey = serpUrl.replace(serpKey, "[REDACTED]");
 
-            const serpResp = await fetch(serpUrl);
+            const serpResp = await fetchImpl(serpUrl);
             serpApiHttpStatus = serpResp.status;
             engineLog.httpStatus = serpResp.status;
             const serpData = await serpResp.json();
@@ -462,26 +573,31 @@ export async function searchOneQuery(q, { debug = false } = {}) {
             // subject token in title/description (not the normalized `link`, which always
             // echoes the query string back via SerpAPI's own redirect URL and would trivially
             // "pass" regardless of real relevance).
-            const subjectHitCount = subjectToken
-              ? serpRaw.filter((item) => `${item.title || ""} ${item.description || ""}`.includes(subjectToken)).length
-              : serpRaw.length; // no token to check against — don't block
-            const subjectGuardPassed = !subjectToken || subjectHitCount >= SUBJECT_MIN_MENTIONS;
+            const serpGuard = subjectGuard(serpRaw, subjectToken, SUBJECT_MIN_RATIO);
+            const subjectHitCount = serpGuard.subjectHitCount;
+            const subjectGuardPassed = serpGuard.passed;
             engineLog.subjectHitCount = subjectHitCount;
+            engineLog.subjectHitRatio = serpGuard.subjectHitRatio;
             engineLog.subjectGuardPassed = subjectGuardPassed;
 
             if (serpNormalized.length > 0 && subjectGuardPassed) {
               finalResults = serpNormalized;
               finalProvider = engine;
               engineLog.usedAsFinal = true;
-              subjectGuardReason = `passed (${subjectHitCount} >= ${SUBJECT_MIN_MENTIONS} mentions of "${subjectToken}")`;
+              subjectGuardReason =
+                `passed_on_${engine} (${subjectHitCount}/${serpRaw.length} mention "${subjectToken}", ` +
+                `ratio=${serpGuard.subjectHitRatio.toFixed(2)})`;
               serpApiEngineLog.push(engineLog);
               break;
             } else {
               engineLog.skippedReason = serpNormalized.length === 0
                 ? "zero_useful_results_after_filtering"
-                : `subject_guard_failed (${subjectHitCount} < ${SUBJECT_MIN_MENTIONS} mentions of "${subjectToken}")`;
+                : `subject_guard_failed (${subjectHitCount}/${serpRaw.length}, ` +
+                  `ratio=${serpGuard.subjectHitRatio.toFixed(2)} < ${SUBJECT_MIN_RATIO})`;
               if (serpNormalized.length > 0 && !subjectGuardPassed) {
-                subjectGuardReason = `failed_on_${engine} (${subjectHitCount} < ${SUBJECT_MIN_MENTIONS} mentions of "${subjectToken}")`;
+                subjectGuardReason =
+                  `failed_on_${engine} (${subjectHitCount}/${serpRaw.length}, ` +
+                  `ratio=${serpGuard.subjectHitRatio.toFixed(2)} < ${SUBJECT_MIN_RATIO})`;
               }
               serpApiEngineLog.push(engineLog);
             }
@@ -496,18 +612,26 @@ export async function searchOneQuery(q, { debug = false } = {}) {
     const response = {
       query: q,
       provider: finalProvider,
-      results: finalResults.slice(0, 18).map(({ isLogo, thumbnailOriginal, ...r }) => r)
+      results: finalResults
+        .slice(0, 18)
+        .map(({ isLogo, thumbnailOriginal, ...result }) => ({ ...result, provider: finalProvider }))
     };
 
     if (debug) {
-      response.version = "serpapi-fallback-v11-quality-gate";
+      response.version = "baidu-images-v1";
+      response.providerSelectionOrder = containsCjk(q)
+        ? ["baidu", "google_images", "bing_images", "yandex_images", "brave"]
+        : ["google_images", "bing_images", "yandex_images", "brave"];
+      response.providerFetchOrder = containsCjk(q)
+        ? ["brave_baseline", "baidu", "google_images", "bing_images", "yandex_images"]
+        : ["brave_baseline", "google_images", "bing_images", "yandex_images"];
       response.braveRawCount = braveRaw.length;
       response.braveNormalizedCount = braveNormalized.length;
       response.braveUsefulCount = braveUseful.length;
       response.braveTriggerReason = braveTriggerReason;
       response.braveQuality = braveQuality;
       response.braveSubjectHitRatio = braveSubjectHitRatio;
-      response.braveSubjectMinimumRatio = SUBJECT_MIN_BRAVE_RATIO;
+      response.braveSubjectMinimumRatio = SUBJECT_MIN_RATIO;
       response.qualityFallbackThreshold = QUALITY_FALLBACK_THRESHOLD;
       response.subjectToken = subjectToken;
       response.subjectGuardReason = subjectGuardReason;
@@ -524,6 +648,7 @@ export async function searchOneQuery(q, { debug = false } = {}) {
       response.serpApiNormalizedCount = serpApiNormalizedCount;
       response.serpApiFirstResultKeys = serpApiFirstResultKeys;
       response.serpApiFirstResultSample = serpApiFirstResultSample;
+      response.baiduAttemptLog = baiduAttemptLog;
       // Per-engine attempt log, in cascade order: which engines were tried, skipped (and why),
       // their HTTP status, raw/normalized candidate counts, and which one (if any) was used.
       response.serpApiEngineLog = serpApiEngineLog;
@@ -537,8 +662,8 @@ export async function searchOneQuery(q, { debug = false } = {}) {
   }
 }
 
-// Thin HTTP wrapper around searchOneQuery() for manual/full-page searches — behavior
-// and response shape here are unchanged from before the refactor.
+// Thin HTTP wrapper for manual/full-page searches. `brave` runs the complete provider
+// cascade; `baidu` exposes the direct provider path for diagnostics and explicit use.
 export async function handler(event) {
   const q = (event.queryStringParameters?.q || "").trim();
   const provider = (event.queryStringParameters?.provider || "brave").trim();
@@ -548,19 +673,67 @@ export async function handler(event) {
     return jsonResponse(400, { query: q, provider, results: [], error: "Missing query parameter" });
   }
 
-  if (provider !== "brave") {
-    return jsonResponse(400, { query: q, provider, results: [], error: "Unsupported provider (only 'brave' supported for now)" });
-  }
-
-  try {
-    const response = await searchOneQuery(q, { debug });
-    return jsonResponse(200, response);
-  } catch (err) {
-    return jsonResponse(500, {
+  if (!["brave", "baidu"].includes(provider)) {
+    return jsonResponse(400, {
       query: q,
       provider,
       results: [],
-      error: err.message || "Unknown error"
+      error: "Unsupported provider (supported: 'brave', 'baidu')",
+    });
+  }
+
+  try {
+    if (provider === "baidu") {
+      const baidu = await searchBaiduProvider(q);
+      const response = {
+        query: q,
+        provider,
+        results: baidu.results
+          .slice(0, 18)
+          .map(({ isLogo, thumbnailOriginal, ...result }) => ({ ...result, provider })),
+      };
+      if (!baidu.subjectGuardPassed) {
+        response.error =
+          `Baidu subject guard rejected the batch (${baidu.subjectHitCount}/${baidu.rawCount} ` +
+          `results mention "${baidu.subjectToken}")`;
+      } else if (baidu.results.length === 0) {
+        response.error = "Baidu returned no usable results after filtering";
+      }
+      if (debug) {
+        response.version = "baidu-images-v1";
+        response.baiduAttemptLog = {
+          attempted: true,
+          rawCount: baidu.rawCount,
+          normalizedCount: baidu.normalizedCount,
+          subjectHitCount: baidu.subjectHitCount,
+          subjectHitRatio: baidu.subjectHitRatio,
+          normalizedSubjectHitCount: baidu.normalizedSubjectHitCount,
+          normalizedSubjectHitRatio: baidu.normalizedSubjectHitRatio,
+          subjectGuardPassed: baidu.subjectGuardPassed,
+          telemetry: baidu.telemetry,
+        };
+      }
+      return jsonResponse(200, response);
+    }
+
+    const response = await searchOneQuery(q, { debug });
+    return jsonResponse(200, response);
+  } catch (err) {
+    return jsonResponse(provider === "baidu" ? 502 : 500, {
+      query: q,
+      provider,
+      results: [],
+      error: err.message || "Unknown error",
+      ...(debug && provider === "baidu"
+        ? {
+            baiduAttemptLog: {
+              attempted: true,
+              error: err.message || "Unknown error",
+              errorCode: err.code || "unknown",
+              httpStatus: err.status ?? null,
+            },
+          }
+        : {}),
     });
   }
 }
