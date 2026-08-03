@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="wash" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#1a1a22"/>
+      <stop offset="100%" stop-color="#0e0e12"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#wash)"/>
+
+  <!-- corner brackets, echoing the page HUD frame -->
+  <g fill="none" stroke="#c9a96e" stroke-width="2.5" stroke-linecap="round" opacity="0.9">
+    <path d="M64 96 H40 A8 8 0 0 0 32 104 V128"/>
+    <path d="M1136 96 H1160 A8 8 0 0 1 1168 104 V128"/>
+    <path d="M64 534 H40 A8 8 0 0 1 32 526 V502"/>
+    <path d="M1136 534 H1160 A8 8 0 0 0 1168 526 V502"/>
+  </g>
+
+  <text x="64" y="88" font-family="JetBrains Mono, monospace" font-size="18" letter-spacing="2" fill="#c9a96e">JLK &#183; APEX CHANNEL</text>
+  <circle cx="1112" cy="82" r="6" fill="#c9a96e"/>
+  <text x="1096" y="88" font-family="JetBrains Mono, monospace" font-size="18" letter-spacing="1.5" fill="#c9a96e" text-anchor="end">SIGNAL</text>
+
+  <text x="600" y="270" font-family="JetBrains Mono, monospace" font-size="18" letter-spacing="2.5" fill="#c9a96e" text-anchor="middle">SIGNAL FROM THE CONTROL ROOM</text>
+
+  <text x="600" y="342" font-family="Inter, sans-serif" font-size="52" font-weight="700" fill="#f0ede8" text-anchor="middle">justlikekatie.com is coming soon.</text>
+
+  <text x="600" y="404" font-family="Inter, sans-serif" font-size="27" font-weight="500" fill="#f0ede8" text-anchor="middle">A tiny internet control room for Katie Hendley&#8217;s creative work.</text>
+
+  <text x="64" y="558" font-family="JetBrains Mono, monospace" font-size="16" letter-spacing="1.5" fill="#a89a7c">STATUS &#8212; BUILD MODE</text>
+  <text x="1136" y="558" font-family="JetBrains Mono, monospace" font-size="16" letter-spacing="1.5" fill="#a89a7c" text-anchor="end">&#169; KATIE HENDLEY</text>
+</svg>

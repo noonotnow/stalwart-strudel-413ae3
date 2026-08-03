@@ -1,0 +1,24 @@
+# Deployment config for the justlikekatie.com coming-soon page.
+#
+# This is intentionally independent from the repo root's netlify.toml,
+# which builds and publishes the private phase0 tool and must stay
+# untouched. This file only takes effect on a Netlify site that is
+# configured (in the Netlify dashboard, not in git) with:
+#
+#   Base directory: site
+#
+# That gives this static page its own Netlify "site," which the apex
+# domain (justlikekatie.com) can be pointed at directly — without
+# touching how the private tool is built or deployed elsewhere.
+#
+# No build step: this is a hand-authored static page, nothing to compile.
+
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

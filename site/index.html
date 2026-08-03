@@ -1,0 +1,311 @@
+<!doctype html>
+<!--
+  IMPECCABLE DIRECTION CONTRACT
+  THESIS: A single instrument-panel viewport that reads as built-on-purpose, not
+  broken — it refuses the apologetic "coming soon" placeholder.
+  OWN-WORLD: Near-black ground (#0e0e12) with warm gold signal accent (#c9a96e),
+  inherited from this family's existing palette; Inter for the editorial voice;
+  JetBrains Mono strictly for live instrument readouts (channel id, signal state,
+  build status) — genuine telemetry typography, not a technical costume.
+  STORY: A visitor reads the room's own signage — a plain "coming soon," the
+  control-room description, and a one-line status update — notices a live
+  signal confirming quiet, intentional activity behind it, and leaves
+  understanding this is Katie's personal system: deliberately quiet, not a
+  storefront, not for hire, not broken.
+  FIRST VIEWPORT: Full-bleed dark panel framed by thin corner brackets at all
+  four screen corners (HUD chrome, not a card) holding small mono readouts —
+  channel id top-left, live signal top-right, build status bottom-left, mark
+  bottom-right. Inside the panel: a mono eyebrow, the "is coming soon" headline,
+  the verbatim control-room sentence, one status paragraph, a short "More soon,"
+  and a small closing wink about WHOIS marketers — never louder than the copy
+  above it.
+  FORM: Content contract supplied and approved by the user via Notion,
+  authoritative over the original single-sentence layout; visual system
+  (palette/type/HUD grammar) preserved from the prior committed direction.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>justlikekatie.com — coming soon</title>
+  <meta name="description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
+  <link rel="canonical" href="https://justlikekatie.com/" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0e0e12" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://justlikekatie.com/" />
+  <meta property="og:site_name" content="justlikekatie.com" />
+  <meta property="og:title" content="justlikekatie.com — coming soon" />
+  <meta property="og:description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
+  <meta property="og:image" content="https://justlikekatie.com/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A dark instrument panel reading the justlikekatie.com control-room description, framed by corner brackets with a live signal readout." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="justlikekatie.com — coming soon" />
+  <meta name="twitter:description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
+  <meta name="twitter:image" content="https://justlikekatie.com/og-image.png" />
+
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #0e0e12;
+      --bg-wash: #14141a;
+      --fg: #f0ede8;
+      --gold: #c9a96e;
+      --muted: #a89a7c;
+      --edge: rgba(201, 169, 110, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(1.5rem, 4vw, 3rem);
+      background:
+        radial-gradient(ellipse 60% 55% at 50% 30%, rgba(201, 169, 110, 0.1), transparent 68%),
+        radial-gradient(ellipse 90% 70% at 50% 100%, rgba(0, 0, 0, 0.55), transparent 60%),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0px, transparent 1px, transparent 4px),
+        var(--bg);
+    }
+
+    /* HUD corner chrome — frames the whole viewport, not a bordered card */
+    .hud-corner {
+      position: fixed;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: clamp(1.1rem, 3vw, 1.75rem);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .hud-corner::before {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid var(--edge);
+    }
+
+    .hud-corner--tl { top: 0; left: 0; }
+    .hud-corner--tl::before { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+
+    .hud-corner--tr { top: 0; right: 0; }
+    .hud-corner--tr::before { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+
+    .hud-corner--bl { bottom: 0; left: 0; }
+    .hud-corner--bl::before { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+
+    .hud-corner--br { bottom: 0; right: 0; }
+    .hud-corner--br::before { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+    .mono {
+      font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .hud-corner--tl .mono,
+    .hud-corner--tr .mono { color: var(--gold); }
+    .hud-corner--bl .mono,
+    .hud-corner--br .mono { color: var(--muted); }
+
+    .signal {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-direction: row-reverse;
+    }
+
+    .signal-dot {
+      position: relative;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--gold);
+      flex-shrink: 0;
+    }
+
+    .signal-dot::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid var(--gold);
+      animation: ping 2.6s ease-out infinite;
+    }
+
+    @keyframes ping {
+      0% { transform: scale(1); opacity: 0.65; }
+      100% { transform: scale(3.4); opacity: 0; }
+    }
+
+    .panel {
+      position: relative;
+      z-index: 1;
+      max-width: 46rem;
+      width: 100%;
+      text-align: center;
+      padding-block: clamp(3.5rem, 10vh, 5rem);
+    }
+
+    .eyebrow {
+      margin: 0 0 clamp(1.1rem, 3vh, 1.5rem);
+      font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .thesis {
+      margin: 0;
+      font-weight: 700;
+      font-size: clamp(1.6rem, 1.15rem + 2.1vw, 2.75rem);
+      line-height: 1.2;
+      letter-spacing: -0.015em;
+      color: var(--fg);
+      text-wrap: balance;
+    }
+
+    .lede {
+      margin: clamp(1.25rem, 3vh, 1.75rem) auto 0;
+      max-width: 34ch;
+      font-weight: 500;
+      font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3125rem);
+      line-height: 1.5;
+      color: var(--fg);
+      text-wrap: balance;
+    }
+
+    .body-copy {
+      margin: clamp(1.75rem, 4vh, 2.25rem) auto 0;
+      max-width: 36ch;
+      font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
+      line-height: 1.6;
+      color: var(--muted);
+      text-wrap: pretty;
+    }
+
+    .more-soon {
+      margin: clamp(1.75rem, 4vh, 2.25rem) 0 0;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      letter-spacing: 0.02em;
+      color: var(--fg);
+    }
+
+    .whois-aside {
+      margin: clamp(1.5rem, 3.5vh, 2rem) 0 0;
+      font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      opacity: 0.75;
+    }
+
+    @media (max-width: 30rem) {
+      .hud-corner--bl,
+      .hud-corner--br {
+        max-width: 46%;
+        align-items: flex-start;
+      }
+
+      .hud-corner--bl .mono,
+      .hud-corner--br .mono {
+        white-space: normal;
+        line-height: 1.55;
+        font-size: 0.625rem;
+      }
+
+      .hud-corner--br { text-align: right; }
+      .hud-corner--br .mono { text-align: right; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .signal-dot::after {
+        animation: none;
+        transform: scale(1.8);
+        opacity: 0.4;
+      }
+    }
+
+    @media (max-width: 26rem) {
+      .hud-corner { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hud-corner hud-corner--tl">
+      <span class="mono">JLK · Apex Channel</span>
+    </div>
+
+    <div class="hud-corner hud-corner--tr">
+      <span class="signal">
+        <span class="mono">Signal — On</span>
+        <span class="signal-dot" aria-hidden="true"></span>
+      </span>
+    </div>
+
+    <main class="panel">
+      <p class="eyebrow">Signal from the Control Room</p>
+
+      <h1 class="thesis">justlikekatie.com is coming soon.</h1>
+
+      <p class="lede">
+        A tiny internet control room for Katie Hendley’s fandom analysis,
+        creative projects, acting experiments, and “wait, I built a tool for
+        that” moments.
+      </p>
+
+      <p class="body-copy">
+        This site is currently in build mode — gathering portfolio work,
+        fandom systems, media experiments, and the tools behind them into one
+        public home.
+      </p>
+
+      <p class="more-soon">More soon.</p>
+
+      <p class="whois-aside">Built internally. Please do not feed the WHOIS marketers.</p>
+    </main>
+
+    <div class="hud-corner hud-corner--bl">
+      <span class="mono">Status — Build Mode</span>
+    </div>
+
+    <div class="hud-corner hud-corner--br">
+      <span class="mono">© Katie Hendley</span>
+    </div>
+  </div>
+</body>
+</html>
