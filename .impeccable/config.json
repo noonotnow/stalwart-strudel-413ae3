@@ -1,0 +1,17 @@
+{
+  "projectRoots": [
+    "site"
+  ],
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-08-03T18:16:31.490Z",
+        "reason": "Inter is the existing Just Like Katie family typeface, confirmed in root index.html and phase0/src/utils/cardRenderer.ts + exportCanvas.ts -- kept as continuity evidence, not a fresh default pick."
+      }
+    ]
+  }
+}
