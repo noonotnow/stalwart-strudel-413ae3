@@ -17,11 +17,21 @@ Two audiences land on the bare apex domain, `justlikekatie.com`, before any of K
 A quiet, intentional "yes, this is on purpose" signal at the apex domain. It exists so both audiences leave with the same read: the space is deliberately in-progress, personally run, and not abandoned or up for a commissioned rebuild. Success is a visitor (of either kind) forming that impression within seconds, without being sold anything or asked for anything.
 
 ## Positioning
-The one sentence this surface must carry prominently and verbatim, as given by the requester:
+A tighter, Notion-approved content contract (supplied after the initial build and treated as authoritative over the original single-sentence layout) governs the page's exact copy hierarchy. The page has exactly three jobs:
+1. Signal intentionality — under construction *on purpose*, not abandoned, broken, or a "mystery Wix-shaped distress flare."
+2. Explain the vibe using the required control-room sentence, framed as a personal creative system, not a startup landing page.
+3. Protect private architecture — no names/links for the private tools, no product-launch implication, no backend explanation ("goblin wires stay behind the wall").
 
-> "justlikekatie.com is a tiny internet control room for Katie Hendley's fandom analysis, creative projects, acting experiments, and 'wait, I built a tool for that' moments."
+The approved copy hierarchy, rendered top to bottom:
 
-No neighboring generic "coming soon" template can truthfully make this claim — it names a specific, cross-disciplinary practice (fandom analysis + creative work + acting + ad hoc tool-building) rather than a category.
+1. "Signal from the Control Room" (mono eyebrow)
+2. "justlikekatie.com is coming soon." (h1)
+3. The required control-room sentence, restructured as a lede: "A tiny internet control room for Katie Hendley's fandom analysis, creative projects, acting experiments, and 'wait, I built a tool for that' moments."
+4. A build-status paragraph: "This site is currently in build mode — gathering portfolio work, fandom systems, media experiments, and the tools behind them into one public home."
+5. "More soon."
+6. A small, deliberately non-dominant personality aside: "Built internally. Please do not feed the WHOIS marketers."
+
+No neighboring generic "coming soon" template can truthfully make the control-room claim — it names a specific, cross-disciplinary practice (fandom analysis + creative work + acting + ad hoc tool-building) rather than a category.
 
 ## Operating Context
 `justlikekatie.com` is the apex over a live ecosystem of Katie's own working subdomains (e.g. fandom-analysis tooling, a scheduling/planning tool, a personal admin cockpit, a study tool) that already exist and are actively used, but are private/internal and must never be named, linked, or exposed from this public page. The apex itself currently has no site, which is the entire reason WHOIS lookups misread it as unclaimed/neglected.
@@ -30,8 +40,8 @@ This page is deliberately decoupled from this repository's existing deployed app
 
 ## Capabilities and Constraints
 - Fully static, single page. No backend, no forms, no data collection, no newsletter/waitlist infrastructure (none exists and none should be implied).
-- No invented launch dates, countdowns, waitlist counts, testimonials, pricing, or generic SaaS claims of any kind.
-- Must not link or name any of Katie's private tools (fandom analysis tool, planning/scheduling tool, personal admin cockpit, study tool, or any content-publishing/media pipeline).
+- No invented launch dates, countdowns, waitlist counts, testimonials, pricing, generic SaaS claims, dashboard screenshots, analytics badges, admin links, or product-launch framing of any kind.
+- Must not link or name any of Katie's private tools (fandom analysis tool, planning/scheduling tool, personal admin cockpit, study tool, or any content-publishing/media pipeline), and must not explain how the private backend works.
 - No contact or social link is included: a repo-wide search found no existing canonical public contact/social URL to reuse, and the brief permits one only if such a canonical link already exists. *[Confirmed absent by search, not asked live.]*
 - Must render correctly at both desktop and mobile sizes and respect `prefers-reduced-motion`.
 - Deployment: intended to be served as its own independent site bound to the apex domain, separate from this repo's existing deployed app. *[Inferred engineering assumption — the real-world domain-to-site binding for this repo could not be verified from repo contents alone.]*

@@ -55,8 +55,9 @@ Four small mono readouts anchored to each viewport corner, bracket-framed:
 - **Top-left** — `JLK · APEX CHANNEL` (channel identity)
 - **Top-right** — `SIGNAL — ON` with a pulsing gold dot (a live-ness cue,
   not a countdown or launch-date claim)
-- **Bottom-left** — `STATUS — QUIETLY UNDER CONSTRUCTION` (the entire
-  "coming soon" message; stated once, plainly, no urgency language)
+- **Bottom-left** — `STATUS — BUILD MODE` (a one-word-echo of the on-page
+  copy's "build mode" language, not a second, competing phrase for the same
+  state)
 - **Bottom-right** — `© KATIE HENDLEY`
 
 At narrow widths (≤30rem) the bottom-left/right labels are allowed to wrap
@@ -74,17 +75,42 @@ via emulated media query during QA.
 
 ## Content devices
 
-- The required verbatim sentence is the page's sole headline, set as plain
-  unified text (no inline emphasis) so it reads as one engraved statement.
-- A "patch panel" tag row beneath it — `Fandom Analysis · Creative
-  Projects · Acting Experiments · 'Built a Tool for That'` — echoes the
-  sentence's own phrasing as a distinct instrument-panel device, once
-  redundant inline emphasis was removed from the headline itself.
+A Notion-approved content contract (supplied after the initial build, treated
+as authoritative) restructured the panel into a six-block reading order —
+the original verbatim sentence is preserved but reframed as a lede rather
+than a standalone headline:
+
+1. **Eyebrow** — `Signal from the Control Room` (mono, gold) — an editorial
+   kicker, not a section label.
+2. **Headline (`h1`)** — "justlikekatie.com is coming soon." — states
+   intentionality plainly, first, before any explanation.
+3. **Lede** — the required verbatim sentence, restructured as: "A tiny
+   internet control room for Katie Hendley's fandom analysis, creative
+   projects, acting experiments, and 'wait, I built a tool for that'
+   moments." Set in full foreground weight, distinct from the muted
+   body-copy paragraph beneath it.
+4. **Body copy** — a build-status paragraph ("This site is currently in
+   build mode...") in the muted/gold-tinted secondary color, doing the same
+   job the removed "patch panel" tag row used to do, without repeating the
+   lede's own words.
+5. **"More soon."** — a short, bold, low-key close; no date, no countdown.
+6. **WHOIS aside** — "Built internally. Please do not feed the WHOIS
+   marketers." Set smallest, mono, muted, and slightly translucent
+   (`opacity: 0.75`) so it reads as a personality wink at the very bottom
+   of the panel, never competing with the copy above it.
+
+The former "patch panel" tag row (`Fandom Analysis · Creative Projects ·
+Acting Experiments · 'Built a Tool for That'`) was removed: the new
+build-status paragraph already covers the same ground in prose, and the
+approved hierarchy has no tag-row device.
+
 - No fake waitlist counts, launch dates, or newsletter capture — status is
-  communicated once, in plain language, in the bottom-left readout only.
-- No links to internal CREATE/PLAN/CONNECT/MEDIA tooling; no canonical
-  public contact/social link existed in this repo to attach, so none is
-  shown.
+  communicated once, in plain language, in the body-copy paragraph and the
+  bottom-left HUD readout only.
+- No links to internal CREATE/PLAN/CONNECT/MEDIA tooling, no product-launch
+  framing, and no explanation of how the private backend works ("goblin
+  wires stay behind the wall"); no canonical public contact/social link
+  existed in this repo to attach, so none is shown.
 
 ## Known exceptions (disclosed, not silent)
 

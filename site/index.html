@@ -7,25 +7,28 @@
   inherited from this family's existing palette; Inter for the editorial voice;
   JetBrains Mono strictly for live instrument readouts (channel id, signal state,
   build status) — genuine telemetry typography, not a technical costume.
-  STORY: A visitor reads the room's own signage — the exact control-room
-  sentence — notices a live signal confirming quiet, intentional activity behind
-  it, and leaves understanding this is Katie's personal system: deliberately
-  quiet, not a storefront, not for hire.
+  STORY: A visitor reads the room's own signage — a plain "coming soon," the
+  control-room description, and a one-line status update — notices a live
+  signal confirming quiet, intentional activity behind it, and leaves
+  understanding this is Katie's personal system: deliberately quiet, not a
+  storefront, not for hire, not broken.
   FIRST VIEWPORT: Full-bleed dark panel framed by thin corner brackets at all
   four screen corners (HUD chrome, not a card) holding small mono readouts —
   channel id top-left, live signal top-right, build status bottom-left, mark
-  bottom-right. The verbatim sentence sits large and centered, unlabeled, as the
-  room's own signage. A row of four patch-panel tags beneath it echoes the
-  sentence's own named practices as inert labels, never links.
-  FORM: Brief-pinned direction (editorial/control-room, Just Like Katie family)
-  executed directly per new-work.md's "a pinned direction beats the roll."
+  bottom-right. Inside the panel: a mono eyebrow, the "is coming soon" headline,
+  the verbatim control-room sentence, one status paragraph, a short "More soon,"
+  and a small closing wink about WHOIS marketers — never louder than the copy
+  above it.
+  FORM: Content contract supplied and approved by the user via Notion,
+  authoritative over the original single-sentence layout; visual system
+  (palette/type/HUD grammar) preserved from the prior committed direction.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>justlikekatie.com — the control room</title>
-  <meta name="description" content="justlikekatie.com is a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and ‘wait, I built a tool for that’ moments." />
+  <title>justlikekatie.com — coming soon</title>
+  <meta name="description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
   <link rel="canonical" href="https://justlikekatie.com/" />
   <meta name="robots" content="index, follow" />
   <meta name="theme-color" content="#0e0e12" />
@@ -33,15 +36,15 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://justlikekatie.com/" />
   <meta property="og:site_name" content="justlikekatie.com" />
-  <meta property="og:title" content="justlikekatie.com — the control room" />
-  <meta property="og:description" content="justlikekatie.com is a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and ‘wait, I built a tool for that’ moments." />
+  <meta property="og:title" content="justlikekatie.com — coming soon" />
+  <meta property="og:description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
   <meta property="og:image" content="https://justlikekatie.com/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="A dark instrument panel reading the justlikekatie.com control-room description, framed by corner brackets with a live signal readout." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="justlikekatie.com — the control room" />
-  <meta name="twitter:description" content="justlikekatie.com is a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and ‘wait, I built a tool for that’ moments." />
+  <meta name="twitter:title" content="justlikekatie.com — coming soon" />
+  <meta name="twitter:description" content="justlikekatie.com is coming soon — a tiny internet control room for Katie Hendley’s fandom analysis, creative projects, acting experiments, and “wait, I built a tool for that” moments." />
   <meta name="twitter:image" content="https://justlikekatie.com/og-image.png" />
 
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -175,43 +178,62 @@
       padding-block: clamp(3.5rem, 10vh, 5rem);
     }
 
+    .eyebrow {
+      margin: 0 0 clamp(1.1rem, 3vh, 1.5rem);
+      font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
     .thesis {
       margin: 0;
       font-weight: 700;
-      font-size: clamp(1.5rem, 1.05rem + 2.1vw, 2.75rem);
-      line-height: 1.28;
+      font-size: clamp(1.6rem, 1.15rem + 2.1vw, 2.75rem);
+      line-height: 1.2;
       letter-spacing: -0.015em;
       color: var(--fg);
       text-wrap: balance;
     }
 
-    .channels {
-      list-style: none;
-      margin: clamp(2.25rem, 5vh, 3rem) 0 0;
-      padding: 0;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: center;
-      gap: 0.6rem 0;
+    .lede {
+      margin: clamp(1.25rem, 3vh, 1.75rem) auto 0;
+      max-width: 34ch;
+      font-weight: 500;
+      font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3125rem);
+      line-height: 1.5;
+      color: var(--fg);
+      text-wrap: balance;
     }
 
-    .channels li {
+    .body-copy {
+      margin: clamp(1.75rem, 4vh, 2.25rem) auto 0;
+      max-width: 36ch;
+      font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
+      line-height: 1.6;
+      color: var(--muted);
+      text-wrap: pretty;
+    }
+
+    .more-soon {
+      margin: clamp(1.75rem, 4vh, 2.25rem) 0 0;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      letter-spacing: 0.02em;
+      color: var(--fg);
+    }
+
+    .whois-aside {
+      margin: clamp(1.5rem, 3.5vh, 2rem) 0 0;
       font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
       font-size: 0.6875rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      letter-spacing: 0.04em;
       color: var(--muted);
-      padding: 0.45rem 1rem;
-      border-left: 1px solid var(--edge);
+      opacity: 0.75;
     }
 
-    .channels li:first-child { border-left: none; }
-
     @media (max-width: 30rem) {
-      .channels { flex-direction: column; gap: 0.65rem; }
-      .channels li { border-left: none; padding: 0; }
-
       .hud-corner--bl,
       .hud-corner--br {
         max-width: 46%;
@@ -256,22 +278,29 @@
     </div>
 
     <main class="panel">
-      <h1 class="thesis">
-        justlikekatie.com is a tiny internet control room for Katie Hendley’s
-        fandom analysis, creative projects, acting experiments, and
-        ‘wait, I built a tool for that’ moments.
-      </h1>
+      <p class="eyebrow">Signal from the Control Room</p>
 
-      <ul class="channels" role="list">
-        <li>Fandom Analysis</li>
-        <li>Creative Projects</li>
-        <li>Acting Experiments</li>
-        <li>‘Built a Tool for That’</li>
-      </ul>
+      <h1 class="thesis">justlikekatie.com is coming soon.</h1>
+
+      <p class="lede">
+        A tiny internet control room for Katie Hendley’s fandom analysis,
+        creative projects, acting experiments, and “wait, I built a tool for
+        that” moments.
+      </p>
+
+      <p class="body-copy">
+        This site is currently in build mode — gathering portfolio work,
+        fandom systems, media experiments, and the tools behind them into one
+        public home.
+      </p>
+
+      <p class="more-soon">More soon.</p>
+
+      <p class="whois-aside">Built internally. Please do not feed the WHOIS marketers.</p>
     </main>
 
     <div class="hud-corner hud-corner--bl">
-      <span class="mono">Status — Quietly Under Construction</span>
+      <span class="mono">Status — Build Mode</span>
     </div>
 
     <div class="hud-corner hud-corner--br">
