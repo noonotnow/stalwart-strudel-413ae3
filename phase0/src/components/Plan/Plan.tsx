@@ -3,6 +3,7 @@ import {
   PLAN_STATUSES,
   PlanPostsError,
   fetchPlanPosts,
+  countExecutionStates,
   optimisticPost,
   replacePlanPost,
   setPlanOperatorToken,
@@ -11,6 +12,7 @@ import {
   type PlanPostMutation,
   type PlanStatus,
   type ProductionStage,
+  type ExecutionState,
 } from '../../utils/planPosts';
 import {
   addCalendarDays,
@@ -38,6 +40,15 @@ const STAGES: ProductionStage[] = [
   'Ready for XHS Admin',
   'Published',
 ];
+const EXECUTION_LABELS: Record<ExecutionState, string> = {
+  unscheduled: 'Unscheduled',
+  planned: 'Planned',
+  queued: 'Queued',
+  scheduled: 'Scheduled',
+  overdue: 'Overdue',
+  failed: 'Needs recovery',
+  published: 'Published',
+};
 
 export const Plan: React.FC = () => {
   const [posts, setPosts] = useState<PlanPost[]>([]);
@@ -136,6 +147,7 @@ export const Plan: React.FC = () => {
   );
   const today = todayInEt();
   const dates = [today, addCalendarDays(today, 1), addCalendarDays(today, 2)];
+  const executionCounts = countExecutionStates(visiblePosts);
 
   return (
     <section className={styles.plan}>
@@ -192,6 +204,10 @@ export const Plan: React.FC = () => {
         <div className={styles.notice} role="status" aria-live="polite">
           {warning}
         </div>
+      )}
+
+      {!loading && !accessRequired && visiblePosts.length > 0 && (
+        <ExecutionSummary counts={executionCounts} />
       )}
 
       {accessRequired ? (
@@ -389,6 +405,19 @@ function ScheduleBoard({
   );
 }
 
+function ExecutionSummary({ counts }: { counts: ReturnType<typeof countExecutionStates> }) {
+  return (
+    <section className={styles.executionSummary} aria-label="RedNote execution summary">
+      {(Object.keys(EXECUTION_LABELS) as ExecutionState[]).map(state => (
+        <div key={state} data-execution={state}>
+          <strong>{counts[state]}</strong>
+          <span>{EXECUTION_LABELS[state]}</span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function PlanAccess({ onUnlock }: { onUnlock: (token: string) => Promise<void> }) {
   const [token, setToken] = useState('');
   return (
@@ -456,6 +485,7 @@ function PlanCard({
         <div className={styles.chips}>
           {getSeriesLabel(post.series) && <span>{getSeriesLabel(post.series)}</span>}
           <span data-stage={post.productionStage}>{post.productionStage}</span>
+          <span data-execution={post.executionState}>{EXECUTION_LABELS[post.executionState]}</span>
         </div>
         {parsed.kind === 'instant' && (
           <p className={styles.cardTime}>
@@ -463,6 +493,7 @@ function PlanCard({
           </p>
         )}
         {parsed.kind === 'date-only' && <p className={styles.cardTime}>Date only · {parsed.date}</p>}
+        <p className={styles.cardNextAction}>{post.nextAction}</p>
         <div className={styles.cardActions}>
           <button
             type="button"
@@ -470,7 +501,7 @@ function PlanCard({
             onClick={() => onOpen(post)}
             disabled={busy}
           >
-            Schedule
+            Edit intended time
           </button>
           <label>
             <span className={styles.srOnly}>Status for {post.headline}</span>
@@ -637,7 +668,10 @@ function PostDrawer({
           {post.imageUrl && <img className={styles.drawerImage} src={post.imageUrl} alt={`${post.headline} preview`} />}
 
           <section className={styles.editor}>
-            <h3>Editorial publish time</h3>
+            <h3>Intended publish time</h3>
+            <p className={styles.intentNote}>
+              This time is editorial intent. Creator scheduling is confirmed separately by XHS execution state.
+            </p>
             {parsed.kind === 'date-only' && (
               <p className={styles.legacyNote}>
                 Legacy date-only value: {parsed.date}. It stays unchanged until you save a time.
@@ -718,6 +752,7 @@ function PostDrawer({
           <section className={styles.notes}>
             <h3>Production notes</h3>
             <dl>
+              <div><dt>Execution</dt><dd>{EXECUTION_LABELS[post.executionState]}</dd></div>
               <div><dt>Next action</dt><dd>{post.nextAction || 'Not recorded'}</dd></div>
               <div><dt>Requirements</dt><dd>{post.requirements || 'Not recorded'}</dd></div>
               <div><dt>Campaign notes</dt><dd>{post.campaignNotes || 'Not recorded'}</dd></div>

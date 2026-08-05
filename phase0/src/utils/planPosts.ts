@@ -13,6 +13,14 @@ export type ProductionStage =
   | 'Review Packet'
   | 'Ready for XHS Admin'
   | 'Published';
+export type ExecutionState =
+  | 'unscheduled'
+  | 'planned'
+  | 'queued'
+  | 'scheduled'
+  | 'overdue'
+  | 'failed'
+  | 'published';
 
 export interface PlanPost {
   id: string;
@@ -34,6 +42,13 @@ export interface PlanPost {
   mediaBlocked: boolean;
   captionBlocked: boolean;
   productionStage: ProductionStage;
+  executionState: ExecutionState;
+  executionSource: 'plan-intent' | 'xhs-local-job';
+  xhsJobStatus?: string;
+  localPublishJobId?: string;
+  receiptVerificationPending?: boolean;
+  noteId?: string;
+  shareUrl?: string;
   nextAction: string;
   requirements: string;
   campaignNotes: string;
@@ -143,6 +158,22 @@ export function optimisticPost(
 
 export function replacePlanPost(posts: PlanPost[], updated: PlanPost): PlanPost[] {
   return posts.map(post => post.id === updated.id ? updated : post);
+}
+
+export type ExecutionCounts = Record<ExecutionState, number>;
+
+export function countExecutionStates(posts: PlanPost[]): ExecutionCounts {
+  const counts: ExecutionCounts = {
+    unscheduled: 0,
+    planned: 0,
+    queued: 0,
+    scheduled: 0,
+    overdue: 0,
+    failed: 0,
+    published: 0,
+  };
+  for (const post of posts) counts[post.executionState] += 1;
+  return counts;
 }
 
 async function readJson(response: Response): Promise<unknown> {

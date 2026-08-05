@@ -2,6 +2,24 @@ const NOTION_API_URL = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const STATUSES = new Set(["Draft", "In progress", "Ready", "Approved", "Published"]);
+const XHS_JOB_STATUSES = new Set([
+  "queued",
+  "claimed",
+  "staged",
+  "submitted",
+  "scheduled",
+  "operator_attested",
+  "verification_pending",
+  "verified",
+  "reconciled",
+  "failed",
+]);
+const MANAGED_NEXT_ACTIONS = new Set([
+  "Attach media",
+  "Write caption",
+  "Review packet",
+  "Paste to XHS admin",
+]);
 const mutationLocks = new Map();
 const ALIASES = {
   headline: ["Headline", "Name", "Title"],
@@ -81,7 +99,22 @@ function getConfig(env) {
       503,
     );
   }
-  return { token, databaseId, operatorToken };
+  const xhsJobsUrl = env.XHS_LOCAL_PUBLISH_JOBS_URL?.trim();
+  const xhsAccessClientId = env.XHS_ACCESS_CLIENT_ID?.trim();
+  const xhsAccessClientSecret = env.XHS_ACCESS_CLIENT_SECRET?.trim();
+  const xhsValues = [xhsJobsUrl, xhsAccessClientId, xhsAccessClientSecret];
+  if (xhsValues.some(Boolean) && !xhsValues.every(Boolean)) {
+    throw new RequestError(
+      "PLAN XHS status linkage requires XHS_LOCAL_PUBLISH_JOBS_URL, XHS_ACCESS_CLIENT_ID, and XHS_ACCESS_CLIENT_SECRET.",
+      503,
+    );
+  }
+  return {
+    token,
+    databaseId,
+    operatorToken,
+    ...(xhsJobsUrl ? { xhsJobsUrl, xhsAccessClientId, xhsAccessClientSecret } : {}),
+  };
 }
 
 function validateSameOrigin(req) {
@@ -135,10 +168,53 @@ async function listPosts(fetchImpl, config) {
       : undefined;
   } while (cursor);
 
+  const jobs = config.xhsJobsUrl
+    ? await listXhsJobs(fetchImpl, config)
+    : [];
+  const jobsByNotionPage = latestJobsByNotionPage(jobs);
+  const now = new Date();
   return {
-    posts: pages.filter(isRecord).map(notionPageToPost),
+    posts: pages.filter(isRecord).map(page => (
+      notionPageToPost(page, jobsByNotionPage.get(normalizeId(page.id)), now)
+    )),
     source: "notion",
+    executionSource: config.xhsJobsUrl ? "xhs-local-jobs" : "intent-only",
   };
+}
+
+async function listXhsJobs(fetchImpl, config) {
+  const result = await boundedJsonFetch(
+    fetchImpl,
+    config.xhsJobsUrl,
+    {
+      headers: {
+        Accept: "application/json",
+        "CF-Access-Client-Id": config.xhsAccessClientId,
+        "CF-Access-Client-Secret": config.xhsAccessClientSecret,
+      },
+    },
+    "XHS local publish jobs",
+  );
+  if (!Array.isArray(result.jobs)) {
+    throw new UpstreamError("XHS returned an invalid local publish jobs response");
+  }
+  return result.jobs.filter(job => (
+    isRecord(job)
+    && typeof job.notionPageId === "string"
+    && XHS_JOB_STATUSES.has(job.status)
+  ));
+}
+
+function latestJobsByNotionPage(jobs) {
+  const byPage = new Map();
+  for (const job of jobs) {
+    const key = normalizeId(job.notionPageId);
+    const existing = byPage.get(key);
+    if (!existing || String(job.updatedAt ?? "") > String(existing.updatedAt ?? "")) {
+      byPage.set(key, job);
+    }
+  }
+  return byPage;
 }
 
 async function updatePost(fetchImpl, config, input) {
@@ -181,6 +257,10 @@ async function updatePost(fetchImpl, config, input) {
       : { select: { name: input.status } };
   }
 
+  const jobs = config.xhsJobsUrl
+    ? await listXhsJobs(fetchImpl, config)
+    : [];
+  const xhsJob = latestJobsByNotionPage(jobs).get(normalizeId(current.id));
   const updated = await notionJson(
     fetchImpl,
     `${NOTION_API_URL}/pages/${input.id}`,
@@ -190,7 +270,7 @@ async function updatePost(fetchImpl, config, input) {
       body: JSON.stringify({ properties }),
     },
   );
-  return notionPageToPost(updated);
+  return notionPageToPost(updated, xhsJob);
 }
 
 async function withPostLock(id, operation) {
@@ -279,7 +359,7 @@ function findProperty(properties, aliases, expectedTypes) {
   );
 }
 
-export function notionPageToPost(page) {
+export function notionPageToPost(page, xhsJob, now = new Date()) {
   const properties = isRecord(page.properties) ? page.properties : {};
   const get = key => property(properties, ALIASES[key]);
   const imageUrls = propertyUrls(get("imageUrls"));
@@ -304,6 +384,17 @@ export function notionPageToPost(page) {
           ? "Ready for XHS Admin"
           : "Review Packet";
 
+  const scheduledDate = propertyDate(get("scheduledDate"));
+  const postUrl = propertyUrls(get("postUrl"))[0];
+  const execution = deriveExecutionState({
+    scheduledDate,
+    status,
+    postUrl,
+    xhsJob,
+    now,
+  });
+  const recordedNextAction = propertyText(get("nextAction"));
+
   return {
     id: String(page.id ?? ""),
     version: typeof page.last_edited_time === "string" ? page.last_edited_time : "",
@@ -311,7 +402,7 @@ export function notionPageToPost(page) {
     series: propertyText(get("series")),
     platform: propertyText(get("platform")) || "Unspecified",
     status,
-    scheduledDate: propertyDate(get("scheduledDate")),
+    scheduledDate,
     thumbnail,
     imageUrls,
     imageUrl: thumbnail || imageUrls[0],
@@ -324,13 +415,133 @@ export function notionPageToPost(page) {
     mediaBlocked,
     captionBlocked,
     productionStage,
-    nextAction: propertyText(get("nextAction")),
+    executionState: execution.state,
+    executionSource: execution.source,
+    xhsJobStatus: execution.xhsJobStatus,
+    localPublishJobId: execution.localPublishJobId,
+    receiptVerificationPending: execution.receiptVerificationPending,
+    noteId: execution.noteId,
+    shareUrl: execution.shareUrl,
+    nextAction: deriveExecutionNextAction({
+      mediaBlocked,
+      captionBlocked,
+      packetReady,
+      execution,
+      postUrl,
+      recordedNextAction,
+    }),
     requirements: propertyText(get("requirements")),
     campaignNotes: propertyText(get("campaignNotes")),
     notionUrl: typeof page.url === "string" ? page.url : undefined,
     createUrl: propertyUrls(get("createUrl"))[0],
-    postUrl: propertyUrls(get("postUrl"))[0],
+    postUrl,
   };
+}
+
+export function deriveExecutionState({
+  scheduledDate,
+  status,
+  postUrl,
+  xhsJob,
+  now = new Date(),
+}) {
+  const xhsStatus = XHS_JOB_STATUSES.has(xhsJob?.status) ? xhsJob.status : undefined;
+  const identity = {
+    ...(typeof xhsJob?.noteId === "string" && xhsJob.noteId ? { noteId: xhsJob.noteId } : {}),
+    ...(typeof xhsJob?.shareUrl === "string" && xhsJob.shareUrl ? { shareUrl: xhsJob.shareUrl } : {}),
+  };
+  const details = {
+    source: xhsStatus ? "xhs-local-job" : "plan-intent",
+    ...(xhsStatus ? { xhsJobStatus: xhsStatus } : {}),
+    ...(typeof xhsJob?.id === "string" ? { localPublishJobId: xhsJob.id } : {}),
+    ...identity,
+  };
+
+  if (xhsStatus === "verified" || xhsStatus === "reconciled") {
+    return { state: "published", ...details };
+  }
+  if (
+    xhsStatus === "submitted"
+    || xhsStatus === "scheduled"
+    || xhsStatus === "operator_attested"
+    || xhsStatus === "verification_pending"
+  ) {
+    return {
+      state: "scheduled",
+      ...details,
+      receiptVerificationPending: xhsStatus === "operator_attested",
+    };
+  }
+  if (xhsStatus === "queued" || xhsStatus === "claimed" || xhsStatus === "staged") {
+    return { state: "queued", ...details };
+  }
+  if (xhsStatus === "failed") {
+    return { state: "failed", ...details };
+  }
+  if (/^(published|posted)$/i.test(status) || postUrl) {
+    return { state: "published", ...details };
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+    return scheduledDate < dateInEt(now)
+      ? { state: "overdue", ...details }
+      : { state: "planned", ...details };
+  }
+  const intendedAt = parseIntendedInstant(scheduledDate);
+  if (!intendedAt) return { state: "unscheduled", ...details };
+  return intendedAt.getTime() <= now.getTime()
+    ? { state: "overdue", ...details }
+    : { state: "planned", ...details };
+}
+
+function deriveExecutionNextAction({
+  mediaBlocked,
+  captionBlocked,
+  packetReady,
+  execution,
+  postUrl,
+  recordedNextAction,
+}) {
+  if (execution.state === "published") {
+    return postUrl ? "Backfill metrics" : "Backfill URL/metrics";
+  }
+  if (execution.state === "scheduled") {
+    return execution.receiptVerificationPending
+      ? "Await receipt verification"
+      : "Await publication verification";
+  }
+  if (execution.state === "queued") return "Next worker";
+  if (execution.state === "failed") return "Recover failed dispatch";
+  if (mediaBlocked) return "Attach media";
+  if (captionBlocked) return "Write caption";
+  if (packetReady !== true) return "Review packet";
+  switch (execution.state) {
+    case "overdue":
+      return "Dispatch/recover now";
+    case "planned":
+      return "Queue for worker";
+    default:
+      return recordedNextAction && !MANAGED_NEXT_ACTIONS.has(recordedNextAction)
+        ? recordedNextAction
+        : "Set intended time";
+  }
+}
+
+function parseIntendedInstant(value) {
+  if (typeof value !== "string" || !value) return null;
+  const candidate = new Date(value);
+  return Number.isNaN(candidate.getTime()) ? null : candidate;
+}
+
+function dateInEt(value) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const get = type => parts.find(part => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function property(properties, aliases) {
@@ -400,6 +611,7 @@ async function notionJson(fetchImpl, url, token, init = {}) {
   } catch {
     throw new UpstreamError("Notion could not be reached", 503);
   }
+
   const body = await readBoundedJson(response);
   if (!response.ok) {
     throw new UpstreamError(
@@ -407,6 +619,25 @@ async function notionJson(fetchImpl, url, token, init = {}) {
         ? body.message
         : `Notion request failed (HTTP ${response.status})`,
       response.status === 409 ? 409 : 502,
+    );
+  }
+  return body;
+}
+
+async function boundedJsonFetch(fetchImpl, url, init, label) {
+  let response;
+  try {
+    response = await fetchImpl(url, init);
+  } catch {
+    throw new UpstreamError(`${label} could not be reached`, 503);
+  }
+  const body = await readBoundedJson(response);
+  if (!response.ok) {
+    throw new UpstreamError(
+      typeof body.error === "string"
+        ? body.error
+        : `${label} request failed (HTTP ${response.status})`,
+      response.status === 401 || response.status === 403 ? 503 : 502,
     );
   }
   return body;

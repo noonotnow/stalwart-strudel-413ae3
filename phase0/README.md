@@ -44,6 +44,8 @@ variables in Netlify:
 - `NOTION_API_KEY` — server-only integration token with access to the Posts DB
 - `NOTION_POSTS_DB_ID` — Notion Posts database used by the embedded PLAN view
 - `PLAN_OPERATOR_TOKEN` — operator-entered bearer key required for Posts reads and writes
+- `XHS_LOCAL_PUBLISH_JOBS_URL` — optional canonical XHS Admin local-jobs endpoint used to distinguish intent from execution
+- `XHS_ACCESS_CLIENT_ID` / `XHS_ACCESS_CLIENT_SECRET` — Cloudflare Access service credentials for that XHS status endpoint; configure all three XHS values together
 
 Remove the former `VITE_PLAN_SECRET`, `VITE_MEDIA_UPLOAD_URL`, and
 `VITE_PLAN_URL` values. No `VITE_` credential is used by the handoff flow.

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   optimisticPost,
+  countExecutionStates,
   replacePlanPost,
   updatePlanPost,
   type PlanPost,
@@ -25,6 +26,8 @@ const post: PlanPost = {
   mediaBlocked: true,
   captionBlocked: true,
   productionStage: 'Needs Media',
+  executionState: 'unscheduled',
+  executionSource: 'plan-intent',
   nextAction: '',
   requirements: '',
   campaignNotes: '',
@@ -44,6 +47,40 @@ test('sends schedule edits with the current version for conflict detection', asy
     return Response.json({ post: updated });
   });
   assert.equal(result.scheduledDate, updated.scheduledDate);
+});
+
+test('counts the exact overdue, queued, scheduled, and published execution states', () => {
+  const fourStatePosts: PlanPost[] = [
+    { ...post, id: 'aug-5-one', headline: 'Aug 5 one', executionState: 'overdue' },
+    { ...post, id: 'aug-5-two', headline: 'Aug 5 two', executionState: 'overdue' },
+    {
+      ...post,
+      id: 'day-5',
+      headline: 'Day 5 | 微博不在，小红书继续等',
+      executionState: 'scheduled',
+      xhsJobStatus: 'operator_attested',
+      receiptVerificationPending: true,
+      nextAction: 'Await receipt verification',
+    },
+    {
+      ...post,
+      id: 'cdrama-bts',
+      headline: 'When a Cdrama Edit Hits Harder Because of the BTS',
+      executionState: 'queued',
+      xhsJobStatus: 'queued',
+      nextAction: 'Next worker',
+    },
+  ];
+
+  assert.deepEqual(countExecutionStates(fourStatePosts), {
+    unscheduled: 0,
+    planned: 0,
+    queued: 1,
+    scheduled: 1,
+    overdue: 2,
+    failed: 0,
+    published: 0,
+  });
 });
 
 test('supports optimistic schedule, clear, and status updates with exact rollback snapshots', () => {
